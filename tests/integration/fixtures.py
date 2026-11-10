@@ -84,10 +84,15 @@ class RunningClient:
             time.sleep(1)
 
     def require_native_handoff(self):
-        # Release the native observer only after the Win32 observer and spec checks finish.
+        if self.observer is None:
+            raise AssertionError("Native startup observer was not started")
+
+        # Check macOS window visibility after Win32 startup and installation checks pass.
         (self.logs / "startup-complete").touch()
-        if self.observer is None or self.observer.wait(timeout=15) != 0:
-            raise AssertionError("Native window, Dock ownership or handoff observation failed")
+        status = self.observer.wait(timeout=15)
+        if status != 0:
+            output = (self.logs / "native-observer.log").read_text(errors="replace")
+            raise AssertionError(f"Native startup observer exited with status {status}:\n{output}")
 
 
 class ManifestHandler(BaseHTTPRequestHandler):
@@ -291,9 +296,13 @@ class RuntimeFixture:
             finally:
                 self._stop(client)
 
-    def require_centered_launcher_with_dock_entry(self, client):
-        self.run(self.native_observer, "--launcher", str(client.process.pid),
-                 environment=client.environment, timeout=20, log=client.logs / "native-observer.log")
+    def require_visible_launcher_with_dock_entry(self, client):
+        log = client.logs / "native-observer.log"
+        result = self.run(self.native_observer, "--launcher", str(client.process.pid),
+                          environment=client.environment, timeout=20, check=False, log=log)
+        if result.returncode != 0:
+            output = log.read_text(errors="replace")
+            raise AssertionError(f"Launcher window observer exited with status {result.returncode}:\n{output}")
 
     def require_launch_failure(self, client, message):
         deadline = time.monotonic() + 20
@@ -301,7 +310,7 @@ class RuntimeFixture:
             if client.process.poll() is not None or time.monotonic() > deadline:
                 raise AssertionError(f"Launcher did not report: {message}")
             time.sleep(0.1)
-        self.require_centered_launcher_with_dock_entry(client)
+        self.require_visible_launcher_with_dock_entry(client)
 
     def require_stable_mtgo(self, client):
         """Observe MTGO.exe's main window and matching CLR/JIT architecture for ten seconds."""

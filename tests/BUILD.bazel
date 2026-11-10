@@ -94,7 +94,7 @@ dock_attention_test(
     name = "dock_attention",
     observer = ":attention_observer",
     window = ":attention_window",
-    runtime = "//src:runtime",
+    runtime_archive = "//src:runtime_arm64",
     size = "medium",
     tags = ["exclusive", "requires-darwin", "no-remote", "no-sandbox"],
 )
@@ -103,7 +103,7 @@ dock_attention_test(
     name = "dock_attention_x86_64",
     observer = ":attention_observer",
     window = ":attention_window_x86_64",
-    runtime = "//src:runtime_intel",
+    runtime_archive = "//src:runtime_x86_64",
     size = "medium",
     tags = ["exclusive", "manual", "requires-darwin", "no-remote", "no-sandbox"],
 )

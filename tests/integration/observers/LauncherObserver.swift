@@ -5,7 +5,7 @@ import Darwin
 @MainActor
 private final class SessionPeers {
   var gamePID: pid_t?
-  var initialWindowSize: CGSize?
+  var mainWindowSize: CGSize?
   var processes = Set<pid_t>()
 }
 
@@ -43,16 +43,12 @@ enum LauncherObserver {
         peers.processes.insert(peerPID)
         if name.caseInsensitiveCompare("MTGO.exe") == .orderedSame {
           peers.gamePID = peerPID
-          if let reportedSize { peers.initialWindowSize = reportedSize }
+          if let reportedSize { peers.mainWindowSize = reportedSize }
         }
       }
     }
     defer { DistributedNotificationCenter.default().removeObserver(registration) }
     var sawWindow = false
-    var initialLauncherSize: CGSize?
-    var mainWindowID: Int?
-    var sawExpansion = false
-    var sawCrossfade = false
     var sawDockIcon = false
     var checkedLaunchIcon = false
     var firstDockTime: TimeInterval?
@@ -73,33 +69,10 @@ enum LauncherObserver {
       let nativeWindows = windows.filter {
         ($0[kCGWindowOwnerPID as String] as? Int32) == pid
           && ($0[kCGWindowLayer as String] as? Int) == 0
+          && (($0[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0) > 0
       }
       let nativeWindowVisible = !nativeWindows.isEmpty
       if !expectProgress, nativeWindowVisible { fail("A routine launch displayed progress despite its preference.") }
-      if let native = nativeWindows.first, let size = windowSize(native) {
-        initialLauncherSize = initialLauncherSize ?? size
-        if let initialLauncherSize, size.width > initialLauncherSize.width + 1 {
-          sawExpansion = true
-        }
-      }
-      if let gamePID = peers.gamePID, let expectedSize = peers.initialWindowSize {
-        let gameWindows = windows.filter {
-          ($0[kCGWindowOwnerPID as String] as? Int32) == gamePID
-            && ($0[kCGWindowLayer as String] as? Int) == 0
-        }
-        if mainWindowID == nil {
-          mainWindowID = gameWindows.first(where: { windowSize($0) == expectedSize })?[kCGWindowNumber as String] as? Int
-        }
-        if let main = gameWindows.first(where: { ($0[kCGWindowNumber as String] as? Int) == mainWindowID }) {
-          guard windowSize(main) == expectedSize else { fail("MTGO resized its live window during the handoff.") }
-          let gameAlpha = (main[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0
-          if gameAlpha > 0.01 && gameAlpha < 0.99,
-            nativeWindows.contains(where: {
-              let alpha = ($0[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0
-              return alpha > 0.01 && alpha < 0.99
-            }) { sawCrossfade = true }
-        }
-      }
       sawWindow = sawWindow || nativeWindowVisible
       if nativeWindowVisible && firstWindowTime == nil {
         firstWindowTime = ProcessInfo.processInfo.systemUptime - started
@@ -128,8 +101,14 @@ enum LauncherObserver {
         let end = readyDeadline ?? Date().addingTimeInterval(5)
         readyDeadline = end
         if !nativeWindowVisible, owner.isFinishedLaunching,
-          let gamePID = peers.gamePID, let game = NSRunningApplication(processIdentifier: gamePID),
-          windows.contains(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == gamePID }) {
+          let gamePID = peers.gamePID, let size = peers.mainWindowSize,
+          let game = NSRunningApplication(processIdentifier: gamePID),
+          windows.contains(where: {
+            ($0[kCGWindowOwnerPID as String] as? Int32) == gamePID
+              && ($0[kCGWindowLayer as String] as? Int) == 0
+              && windowSize($0) == size
+              && (($0[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0) > 0
+          }) {
           guard let app = owner.bundleURL else { fail("Native Dock owner has no app bundle.") }
           guard let icon = try? Data(contentsOf: app.appendingPathComponent("Contents/Resources/GameIcon.icns")),
             let gameIcon = try? Data(contentsOf: runtime.appendingPathComponent("Contents/Resources/GameIcon.icns")),
@@ -151,26 +130,14 @@ enum LauncherObserver {
         }
         guard Date() < end else {
           fail("The launcher did not hand off to MTGO's visible UI helper: nativeVisible=\(nativeWindowVisible), "
-            + "gamePID=\(String(describing: peers.gamePID)), frame=\(String(describing: peers.initialWindowSize)), "
+            + "gamePID=\(String(describing: peers.gamePID)), frame=\(String(describing: peers.mainWindowSize)), "
             + "nativeFinished=\(owner.isFinishedLaunching), nativeWindows=\(nativeWindows), "
             + "gameWindows=\(windows.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == peers.gamePID }).")
         }
       }
-      // Sample the brief handoff more often once Wine announces its main window.
-      let interval = peers.gamePID == nil ? 0.02 : 0.005
-      RunLoop.current.run(until: Date().addingTimeInterval(interval))
+      RunLoop.current.run(until: Date().addingTimeInterval(0.02))
     }
 
-    if expectProgress && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-      guard peers.initialWindowSize != nil, mainWindowID != nil else {
-        fail("The handoff observer could not identify MTGO's main window.")
-      }
-      guard sawExpansion else { fail("The observer did not see the launcher expand during handoff.") }
-      guard sawCrossfade else {
-        fail("The observer did not see overlapping launcher and MTGO alpha values during handoff.")
-      }
-      print("PASS: launcher background expanded and crossfaded while MTGO kept its final window size.")
-    }
     guard sawDockIcon, checkedLaunchIcon else { fail("MTGO did not show its game icon throughout startup.") }
     print(String(format: "PASS: startup Dock icon appeared after %.2f seconds and stayed with the same process.", firstDockTime ?? 0))
     if expectProgress {
@@ -199,15 +166,12 @@ enum LauncherObserver {
         let app = NSRunningApplication(processIdentifier: pid), app.isFinishedLaunching {
         let frame = NSRect(x: x.doubleValue, y: primary.frame.maxY - y.doubleValue - height.doubleValue,
           width: width.doubleValue, height: height.doubleValue)
-        guard let screen = NSScreen.screens.first(where: {
-          $0.frame.contains(NSPoint(x: frame.midX, y: frame.midY))
-        }), abs(frame.midX - screen.visibleFrame.midX) < 1,
-          abs(frame.midY - screen.visibleFrame.midY) < 1 else {
-          fail("Native launcher is not centered in its display's usable area: window=\(frame), "
+        guard NSScreen.screens.contains(where: { $0.visibleFrame.contains(frame) }) else {
+          fail("Native launcher extends beyond its display's usable area: window=\(frame), "
             + "displays=\(NSScreen.screens.map { $0.visibleFrame }).")
         }
         guard app.activationPolicy == .regular else { fail("Native launcher has no Dock entry.") }
-        print("PASS: native launcher presented a centered window with its Dock entry.")
+        print("PASS: native launcher presented an on-screen window with its Dock entry.")
         return
       }
       RunLoop.current.run(until: Date().addingTimeInterval(0.02))

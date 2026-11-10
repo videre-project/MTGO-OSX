@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 
 /// Runs Win32 requests through the packaged Mac driver and the production Dock controller.
 @main
@@ -34,7 +35,7 @@ final class DockAttentionTests: NSObject, NSApplicationDelegate {
 
   private func run() async throws {
     let arguments = CommandLine.arguments
-    guard arguments.count == 3 else { throw failure("Expected runtime and Win32 fixture paths") }
+    guard arguments.count == 3 else { throw failure("Expected runtime archive and Win32 fixture paths") }
 
     let activation = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -88,16 +89,49 @@ final class DockAttentionTests: NSObject, NSApplicationDelegate {
     try files.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? files.removeItem(at: root) }
 
-    let resources = URL(fileURLWithPath: arguments[1]).appendingPathComponent("MTGO.app/Contents/Resources")
+    // Extract the release archive; Bazel may flatten symlinks in cached directory outputs.
+    let runtime = root.appendingPathComponent("Runtime")
+    try files.createDirectory(at: runtime, withIntermediateDirectories: true)
+    let unpack = Process()
+    unpack.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+    unpack.arguments = ["-xJf", arguments[1], "-C", runtime.path]
+    try unpack.run()
+    defer { if unpack.isRunning { unpack.terminate() } }
+    try await wait("Runtime extraction did not finish", timeout: 60, until: { !unpack.isRunning })
+    guard unpack.terminationStatus == 0 else {
+      throw failure("Could not extract the runtime (status \(unpack.terminationStatus))")
+    }
+
+    // Register the packaged helper at its final path, as RuntimeInstaller does.
+    let app = runtime.appendingPathComponent("MTGO.app")
+    let registrationStatus = LSRegisterURL(app as CFURL, false)
+    guard registrationStatus == noErr else {
+      throw failure("Could not register the runtime bundle (\(registrationStatus))")
+    }
+
+    let resources = app.appendingPathComponent("Contents/Resources")
     let loader = resources.deletingLastPathComponent().appendingPathComponent("MacOS/wine").resolvingSymlinksInPath()
+    let registrations = DistributedNotificationCenter.default().addObserver(
+      forName: Notification.Name("WineAppDockProxyReady"),
+      object: String(ProcessInfo.processInfo.processIdentifier), queue: .main
+    ) { notification in
+      guard let pid = notification.userInfo?["pid"] as? NSNumber,
+        let name = notification.userInfo?["processName"] as? String else { return }
+      Task { @MainActor in
+        let app = NSRunningApplication(processIdentifier: pid.int32Value)
+        let candidate = app?.executableURL?.resolvingSymlinksInPath().path ?? "unavailable"
+        fputs("Registration: \(name) (\(pid)), executable=\(candidate), expected=\(loader.path)\n", stderr)
+      }
+    }
+    defer { DistributedNotificationCenter.default().removeObserver(registrations) }
+
     let executable = root.appendingPathComponent("MTGO.exe")
     let commands = root.appendingPathComponent("command")
     try files.copyItem(at: URL(fileURLWithPath: arguments[2]), to: executable)
     NSApplication.shared.applicationIconImage = NSImage(contentsOf: resources.appendingPathComponent("GameIcon.icns"))
 
-    var attached = false
     var closed = false
-    dock = DockController(expectedExecutable: { loader }, didAttach: { attached = true }, didCloseWindow: { closed = true })
+    dock = DockController(expectedExecutable: { loader }, didAttach: {}, didCloseWindow: { closed = true })
     defer { dock.detach() }
     var originalDockView = NSApplication.shared.dockTile.contentView
 
@@ -107,11 +141,14 @@ final class DockAttentionTests: NSObject, NSApplicationDelegate {
     process.environment = ProcessInfo.processInfo.environment.merging([
       "WINEPREFIX": root.appendingPathComponent("Prefix").path, "WINEARCH": "win64", "WINEDEBUG": "-all",
       "WINE_DOCK_OWNER_PID": String(ProcessInfo.processInfo.processIdentifier),
-      "WINEDLLOVERRIDES": "winemenubuilder.exe=;mscoree=d", "WINE_DOCK_STARTUP_TRANSITION": "0",
+      "WINEDLLOVERRIDES": "winemenubuilder.exe=;mscoree=d", "WINE_DOCK_STARTUP_TRANSITION": "1",
       "MVK_CONFIG_LOG_LEVEL": "1",
       "DYLD_FALLBACK_LIBRARY_PATH": resources.appendingPathComponent("lib").path + ":/usr/lib",
     ], uniquingKeysWith: { _, new in new })
-    let log = root.appendingPathComponent("wine.log")
+    let logDirectory = ProcessInfo.processInfo.environment["TEST_UNDECLARED_OUTPUTS_DIR"]
+      .map { URL(fileURLWithPath: $0) } ?? root
+    try files.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+    let log = logDirectory.appendingPathComponent("wine.log")
     files.createFile(atPath: log.path, contents: nil)
     let output = try FileHandle(forWritingTo: log)
     process.standardOutput = output
@@ -134,22 +171,32 @@ final class DockAttentionTests: NSObject, NSApplicationDelegate {
       }
     }
 
-    // Configure the main-window title before the GUI process loads the Mac driver.
-    let configuration = Process()
-    configuration.executableURL = process.executableURL
-    configuration.arguments = [executable.path, "--configure"]
-    configuration.environment = process.environment
-    configuration.standardOutput = output
-    configuration.standardError = output
-    try configuration.run()
-    try await wait("The Wine fixture configuration did not finish", timeout: 60, until: { !configuration.isRunning })
-    guard configuration.terminationStatus == 0 else { throw failure("Could not configure the Wine fixture") }
-    gamePID = nil
-    attentionReports.removeAll()
-    try process.run()
-
     do {
-      try await wait("Wine did not register the fixture window", timeout: 60, until: { attached })
+      // Set the title before loading the GUI driver; only the window process uses MTGO.exe.
+      let configuration = Process()
+      configuration.executableURL = process.executableURL
+      configuration.arguments = [
+        "reg.exe", "add", "HKCU\\Software\\Wine\\AppDefaults\\MTGO.exe\\Mac Driver",
+        "/v", "MainWindowTitle", "/t", "REG_SZ", "/d", "MTGO Dock attention test", "/f",
+      ]
+      configuration.environment = process.environment
+      configuration.standardOutput = output
+      configuration.standardError = output
+      try configuration.run()
+      defer { if configuration.isRunning { configuration.terminate() } }
+      try await wait("The Wine fixture configuration did not finish", timeout: 60, until: { !configuration.isRunning })
+      guard configuration.terminationStatus == 0 else {
+        throw failure("Could not configure the Wine fixture (status \(configuration.terminationStatus))")
+      }
+
+      try process.run()
+      fputs("Fixture process: \(process.processIdentifier)\n", stderr)
+      try await wait("Wine did not register the fixture window", timeout: 60, until: {
+        guard process.isRunning else {
+          throw failure("The Win32 fixture exited with status \(process.terminationStatus) before window registration")
+        }
+        return dock.hasWindow
+      })
 
       // Finish the initial Wine focus exchange before testing background attention.
       try await send(.stop, to: commands)
@@ -301,9 +348,9 @@ final class DockAttentionTests: NSObject, NSApplicationDelegate {
     return pixels
   }
 
-  private func wait(_ message: String, timeout: TimeInterval = 15, until condition: () -> Bool) async throws {
+  private func wait(_ message: String, timeout: TimeInterval = 15, until condition: () throws -> Bool) async throws {
     let deadline = Date().addingTimeInterval(timeout)
-    while !condition() {
+    while !(try condition()) {
       guard Date() < deadline else {
         let foreground = NSWorkspace.shared.frontmostApplication
         throw failure("\(message). Foreground: \(foreground?.localizedName ?? "none") (\(foreground?.processIdentifier ?? 0))")

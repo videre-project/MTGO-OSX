@@ -30,7 +30,7 @@ windows_fixture = rule(
 )
 
 def _dock_attention_test_impl(ctx):
-    files = [ctx.executable.observer, ctx.file.runtime, ctx.file.window]
+    files = [ctx.executable.observer, ctx.attr.runtime_archive[RuntimeArchiveInfo].archive, ctx.file.window]
     paths = ['"$TEST_SRCDIR/%s/%s"' % (ctx.workspace_name, file.short_path) for file in files]
     ctx.actions.write(ctx.outputs.executable, "#!/bin/sh\nset -eu\nexec " + " ".join(paths) + "\n", is_executable = True)
     return [DefaultInfo(executable = ctx.outputs.executable, runfiles = ctx.runfiles(files = files))]
@@ -40,7 +40,7 @@ dock_attention_test = rule(
     test = True,
     attrs = {
         "observer": attr.label(mandatory = True, executable = True, cfg = "target"),
-        "runtime": attr.label(mandatory = True, allow_single_file = True),
+        "runtime_archive": attr.label(mandatory = True, providers = [RuntimeArchiveInfo]),
         "window": attr.label(mandatory = True, allow_single_file = [".exe"]),
     },
 )

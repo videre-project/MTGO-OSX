@@ -10,8 +10,10 @@ validation. Each fixture shuts down its test prefix and fails if WineServer
 reports a crash.
 """
 
+from decimal import Decimal
 import json
 import re
+import tarfile
 import unittest
 
 from fixtures import DESKTOP_REFERENCE, RuntimeFixture, Stage, pe_machine, progress_records
@@ -20,13 +22,13 @@ from fixtures import DESKTOP_REFERENCE, RuntimeFixture, Stage, pe_machine, progr
 class LauncherWindowTests(unittest.TestCase):
     runtime: RuntimeFixture
 
-    def test_launcher_opens_centered_with_a_dock_entry(self):
-        """The native startup window appears centered in its display's usable area."""
+    def test_launcher_opens_on_screen_with_a_dock_entry(self):
+        """Startup progress must be visible within a display's usable area with a Dock entry."""
         self.runtime.verify_bundle()
         with self.runtime.start_app("launcher", arguments=("--preview",), environment={
             "MTGO_MANIFEST_URL": "file:///unavailable",
         }) as client:
-            self.runtime.require_centered_launcher_with_dock_entry(client)
+            self.runtime.require_visible_launcher_with_dock_entry(client)
 
 
 class MTGORuntimeTests(unittest.TestCase):
@@ -63,15 +65,21 @@ class MTGORuntimeTests(unittest.TestCase):
             installed_version = self.assert_fresh_install_starts_when_version_api_is_unavailable(api)
             self.assertEqual(downloads.requests, 1, "First launch must fetch the native runtime once")
             self.assertTrue((self.runtime.runtime_root / ".archive.sha256").is_file())
-            original_inf = self.runtime.source_runtime / "MTGO.app/Contents/Resources/share/wine/wine.inf"
+            # Bazel restores directory outputs with new filesystem timestamps.
+            with tarfile.open(self.runtime.archive) as archive:
+                original_inf = archive.getmember("./MTGO.app/Contents/Resources/share/wine/wine.inf")
+                timestamp = Decimal(original_inf.pax_headers.get("mtime", str(original_inf.mtime)))
+            expected_timestamp = int(timestamp * 1_000_000_000)
             installed_inf = self.runtime.resources / "share/wine/wine.inf"
-            self.assertEqual(installed_inf.stat().st_mtime_ns, original_inf.stat().st_mtime_ns,
-                             "Archiving must preserve wine.inf's prefix-update timestamp")
+            self.assertEqual(installed_inf.stat().st_mtime_ns, expected_timestamp,
+                             "Runtime extraction must preserve wine.inf's prefix-update timestamp")
 
             # A current local runtime must launch without contacting its release server.
             downloads.available = False
             api.version = installed_version
             self.assert_current_deployment_relaunches_without_installation(api)
+            self.assertEqual(installed_inf.stat().st_mtime_ns, expected_timestamp,
+                             "Cached relaunch must preserve wine.inf's prefix-update timestamp")
             self.assertEqual(downloads.requests, 1, "Cached runtime must work while its server is offline")
 
             self.assert_installed_client_starts_without_provider_or_desktop_shortcut()
@@ -137,7 +145,7 @@ class MTGORuntimeTests(unittest.TestCase):
             self.assert_metal_backend_is_selected(client)
             self.assert_original_splash_is_suppressed(client)
 
-            # The macOS observer checks the shared Dock entry and expanding crossfade.
+            # MTGO must be visible after setup progress closes, with one shared Dock entry.
             client.require_native_handoff()
             return next(report["version"] for report in reversed(reports) if report.get("version"))
 

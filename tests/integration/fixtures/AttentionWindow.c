@@ -60,10 +60,6 @@ void mainCRTStartup(void)
     if (!argv || argc != 2) ExitProcess(2);
     commands = argv[1];
 
-    /* Match the game's main-window reporting without loading MTGO or Framework. */
-    if (RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\Wine\\AppDefaults\\MTGO.exe\\Mac Driver",
-                       L"MainWindowTitle", REG_SZ, title, sizeof(title))) ExitProcess(5);
-    if (!lstrcmpW(argv[1], L"--configure")) ExitProcess(0);
     type.lpfnWndProc = window_proc;
     type.hInstance = GetModuleHandleW(NULL);
     type.lpszClassName = L"MTGODockAttentionTest";
@@ -71,6 +67,11 @@ void mainCRTStartup(void)
     window = CreateWindowW(type.lpszClassName, title, WS_OVERLAPPEDWINDOW,
                            CW_USEDEFAULT, CW_USEDEFAULT, 320, 160, NULL, NULL, type.hInstance, NULL);
     if (!window) ExitProcess(4);
+    {
+        const char created[] = "Fixture window created.\n";
+        DWORD written;
+        WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), created, sizeof(created) - 1, &written, NULL);
+    }
     ShowWindow(window, SW_SHOWNOACTIVATE);
     SetTimer(window, 1, 50, NULL);
 
