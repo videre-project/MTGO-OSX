@@ -1,0 +1,12 @@
+--- a/dlls/winemac.drv/surface.c
++++ b/dlls/winemac.drv/surface.c
+@@ -86,6 +86,9 @@
+     CGColorSpaceRef colorspace;
+     CGImageRef image;
+     struct macdrv_win_data *data;
++
++    /* Cocoa animates the full-size window, not the Win32 iconic surface. */
++    if (NtUserGetWindowLongW(window_surface->hwnd, GWL_STYLE) & WS_MINIMIZE) return TRUE;
+ 
+     colorspace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+     image = CGImageCreate(color_info->bmiHeader.biWidth, abs(color_info->bmiHeader.biHeight), 8, 32,

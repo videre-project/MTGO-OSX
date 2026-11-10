@@ -1,0 +1,29 @@
+--- a/dlls/ntdll/loader.c
++++ b/dlls/ntdll/loader.c
+@@ -2519,6 +2519,9 @@
+     if (NtCurrentTeb()->WowTebOffset) return TRUE;
+     /* support ARM64EC binaries on x86-64 */
+     if (current_machine == IMAGE_FILE_MACHINE_AMD64 && has_chpe_metadata( file, info )) return TRUE;
++    /* ARM64X images can expose their native view through dynamic relocations. */
++    if (current_machine == IMAGE_FILE_MACHINE_ARM64 && info->Machine == IMAGE_FILE_MACHINE_AMD64 &&
++        has_chpe_metadata( file, info )) return TRUE;
+     /* support 32-bit IL-only images on 64-bit */
+     if (!info->ImageContainsCode) return TRUE;
+     if (info->ComPlusNativeReady) return TRUE;
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -3199,9 +3199,12 @@
+ #ifdef __aarch64__
+     if ((dir = get_data_dir( nt, total_size, IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG )))
+     {
+-        if (image_info->machine == IMAGE_FILE_MACHINE_ARM64 &&
++        if ((image_info->machine == IMAGE_FILE_MACHINE_ARM64 &&
+             (machine == IMAGE_FILE_MACHINE_AMD64 ||
+-             (!machine && main_image_info.Machine == IMAGE_FILE_MACHINE_AMD64)))
++             (!machine && main_image_info.Machine == IMAGE_FILE_MACHINE_AMD64))) ||
++            (image_info->machine == IMAGE_FILE_MACHINE_AMD64 && image_info->is_hybrid &&
++             (machine == IMAGE_FILE_MACHINE_ARM64 ||
++              (!machine && main_image_info.Machine == IMAGE_FILE_MACHINE_ARM64))))
+         {
+             update_arm64x_mapping( view, nt, dir, sec );
+             /* reload changed machine from NT header */

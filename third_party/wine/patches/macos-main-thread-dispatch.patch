@@ -1,0 +1,19 @@
+Run synchronous Cocoa work directly when already on the main thread. OpenGL
+view updates can call this helper from viewWillDraw; queuing another main-thread
+request and waiting for it deadlocks both Cocoa and the render thread.
+
+--- a/dlls/winemac.drv/cocoa_event.m
++++ b/dlls/winemac.drv/cocoa_event.m
+@@ -493,6 +493,12 @@ void OnMainThread(dispatch_block_t block)
+     WineEventQueue* queue = threadDict[WineEventQueueThreadDictionaryKey];
+     dispatch_semaphore_t semaphore = NULL;
+     __block BOOL finished;
+ 
++    if ([NSThread isMainThread])
++    {
++        block();
++        return;
++    }
++
+     if (!queue)
+     {

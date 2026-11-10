@@ -1,0 +1,308 @@
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -59,6 +59,8 @@
+ bool enable_app_nap = false;
+ WCHAR skip_window_title[256];
+ CFStringRef application_icon_path;
++CFStringRef windows_process_name;
++CFStringRef main_window_title;
+ 
+ pthread_key_t macdrv_thread_data_key = 0;
+ UINT64 app_icon_callback = 0;
+@@ -294,6 +296,7 @@
+     if ((p = wcsrchr(appname, '/'))) appname = p + 1;
+     if ((p = wcsrchr(appname, '\\'))) appname = p + 1;
+     len = lstrlenW(appname);
++    windows_process_name = CFStringCreateWithCharacters(NULL, appname, len);
+ 
+     if (len && len < MAX_PATH)
+     {
+@@ -310,6 +313,9 @@
+ 
+     if (!get_config_key(hkey, appkey, "ApplicationIcon", buffer, sizeof(buffer)) && buffer[0])
+         application_icon_path = CFStringCreateWithCharacters(NULL, buffer, lstrlenW(buffer));
++
++    if (!get_config_key(hkey, appkey, "MainWindowTitle", buffer, sizeof(buffer)) && buffer[0])
++        main_window_title = CFStringCreateWithCharacters(NULL, buffer, lstrlenW(buffer));
+ 
+     if (!get_config_key(hkey, appkey, "WindowsFloatWhenInactive", buffer, sizeof(buffer)))
+     {
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -131,6 +131,8 @@
+ extern bool enable_app_nap;
+ extern UniChar skip_window_title[256];
+ extern CFStringRef application_icon_path;
++extern CFStringRef windows_process_name;
++extern CFStringRef main_window_title;
+ 
+ static inline CGRect cgrect_mac_from_win(CGRect rect)
+ {
+@@ -497,6 +499,7 @@
+ extern macdrv_window macdrv_create_cocoa_window(const struct macdrv_window_features* wf,
+         CGRect frame, void* hwnd, macdrv_event_queue queue);
+ extern void macdrv_destroy_cocoa_window(macdrv_window w);
++extern void macdrv_notify_window_destroyed(macdrv_window w);
+ extern void* macdrv_get_window_hwnd(macdrv_window w);
+ extern void macdrv_set_cocoa_window_features(macdrv_window w,
+         const struct macdrv_window_features* wf);
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -18,6 +18,10 @@
+  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+  */
+ 
++#include <limits.h>
++#include <stdlib.h>
++#include <unistd.h>
++
+ #import "cocoa_app.h"
+ #import "cocoa_cursorclipping.h"
+ #import "cocoa_event.h"
+@@ -25,6 +29,13 @@
+ 
+ #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+ 
++
++/* A native host can own the Dock entry for this Wine session. */
++static NSString* const WineAppDockProxyReady = @"WineAppDockProxyReady";
++static NSString* const WineAppDockProxyActivated = @"WineAppDockProxyActivated";
++static NSString* const WineAppDockProxyWindowClosed = @"WineAppDockProxyWindowClosed";
++static NSString* const WineAppDockProxyActivate = @"WineAppDockProxyActivate";
++static NSString* const WineAppDockProxyWindowAction = @"WineAppDockProxyWindowAction";
+ 
+ static NSString* const WineAppWaitQueryResponseMode = @"WineAppWaitQueryResponseMode";
+ 
+@@ -103,10 +112,15 @@
+ @property (retain, nonatomic) NSCursor* cursor;
+ @property (retain, nonatomic) NSImage* applicationIcon;
+ @property (retain, nonatomic) NSImage* applicationIconOverride;
++@property (retain, nonatomic) NSRunningApplication* dockOwner;
++@property (assign, nonatomic) dispatch_source_t dockOwnerMonitor;
++@property (assign, nonatomic) BOOL foregroundInitialized;
+ @property (readonly, nonatomic) BOOL inputSourceIsInputMethod;
+ @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
+ 
+     - (void) setupObservations;
++    - (void) activateFromDock:(NSNotification*)notification;
++    - (void) performWindowAction:(NSNotification*)notification;
+     - (void) applicationDidBecomeActive:(NSNotification *)notification;
+ 
+     static void PerformRequest(void *info);
+@@ -119,6 +132,7 @@
+     @synthesize keyboardType, lastFlagsChanged;
+     @synthesize applicationIcon;
+     @synthesize applicationIconOverride;
++    @synthesize dockOwner, dockOwnerMonitor, foregroundInitialized;
+     @synthesize cursorFrames, cursorTimer, cursor;
+     @synthesize mouseCaptureWindow;
+     @synthesize lastSetCursorPositionTime;
+@@ -194,6 +208,39 @@
+                 self.applicationIcon = self.applicationIconOverride;
+             }
+ 
++            const char* owner = getenv("WINE_DOCK_OWNER_PID");
++            if (owner && *owner)
++            {
++                char* end;
++                long pid = strtol(owner, &end, 10);
++                if (!*end && pid > 1 && pid <= INT_MAX && pid != getpid())
++                {
++                    self.dockOwner = [NSRunningApplication runningApplicationWithProcessIdentifier:(pid_t)pid];
++                    if (self.dockOwner && !self.dockOwner.terminated)
++                    {
++                        dockOwnerMonitor = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid,
++                                                                  DISPATCH_PROC_EXIT,
++                                                                  dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
++                        if (dockOwnerMonitor)
++                        {
++                            /* Force Quit of the Dock owner must also end its Windows UI. */
++                            dispatch_source_set_event_handler(dockOwnerMonitor, ^{ _exit(0); });
++                            dispatch_resume(dockOwnerMonitor);
++                            [[NSDistributedNotificationCenter defaultCenter] addObserver:self
++                                                                               selector:@selector(activateFromDock:)
++                                                                                   name:WineAppDockProxyActivate
++                                                                                 object:[@(getpid()) stringValue]];
++                            [[NSDistributedNotificationCenter defaultCenter] addObserver:self
++                                                                               selector:@selector(performWindowAction:)
++                                                                                   name:WineAppDockProxyWindowAction
++                                                                                 object:[@(getpid()) stringValue]];
++                        }
++                        else self.dockOwner = nil;
++                    }
++                    else self.dockOwner = nil;
++                }
++            }
++
+             [self setupObservations];
+ 
+             keyboardType = LMGetKbdType();
+@@ -211,6 +254,14 @@
+         [screenFrameCGRects release];
+         [applicationIcon release];
+         [applicationIconOverride release];
++        [[NSDistributedNotificationCenter defaultCenter] removeObserver:self name:WineAppDockProxyActivate object:nil];
++        [[NSDistributedNotificationCenter defaultCenter] removeObserver:self name:WineAppDockProxyWindowAction object:nil];
++        if (dockOwnerMonitor)
++        {
++            dispatch_source_cancel(dockOwnerMonitor);
++            dispatch_release(dockOwnerMonitor);
++        }
++        [dockOwner release];
+         [clipCursorHandler release];
+         [cursorTimer release];
+         [cursorFrames release];
+@@ -230,9 +280,33 @@
+         [super dealloc];
+     }
+ 
++    - (void) performWindowAction:(NSNotification*)notification
++    {
++        NSNumber* owner = [notification.userInfo objectForKey:@"ownerPID"];
++        NSString* action = [notification.userInfo objectForKey:@"action"];
++        NSWindow* window = [NSApp keyWindow] ?: [NSApp mainWindow];
++
++        if (![owner isKindOfClass:[NSNumber class]] || owner.intValue != self.dockOwner.processIdentifier ||
++            ![action isKindOfClass:[NSString class]] || ![window isKindOfClass:[WineWindow class]])
++            return;
++
++        [(WineWindow*)window requestWindowAction:action];
++    }
++
++    - (void) activateFromDock:(NSNotification*)notification
++    {
++        if ([[notification.userInfo objectForKey:@"ownerPID"] intValue] != self.dockOwner.processIdentifier)
++            return;
++        if ([NSApp isHidden]) [NSApp unhide:nil];
++        [self tryToActivateIgnoringOtherApps:YES];
++        [self unminimizeWindowIfNoneVisible];
++        [NSApp arrangeInFront:nil];
++    }
++
+     - (void) transformProcessToForeground:(BOOL)activateIfTransformed
+     {
+-        if ([NSApp activationPolicy] != NSApplicationActivationPolicyRegular)
++        if ([NSApp activationPolicy] != NSApplicationActivationPolicyRegular &&
++            (!self.dockOwner || !foregroundInitialized))
+         {
+             NSMenu* mainMenu;
+             NSMenu* submenu;
+@@ -240,7 +301,9 @@
+             NSString* title;
+             NSMenuItem* item;
+ 
+-            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
++            foregroundInitialized = YES;
++            [NSApp setActivationPolicy:self.dockOwner ? NSApplicationActivationPolicyAccessory :
++                                                       NSApplicationActivationPolicyRegular];
+ 
+             if (activateIfTransformed)
+                 [self tryToActivateIgnoringOtherApps:YES];
+@@ -313,6 +376,12 @@
+             [NSApp setWindowsMenu:submenu];
+ 
+             [NSApp setApplicationIconImage:self.applicationIcon];
++            if (self.dockOwner && windows_process_name)
++                [[NSDistributedNotificationCenter defaultCenter] postNotificationName:WineAppDockProxyReady
++                                                                              object:[@(self.dockOwner.processIdentifier) stringValue]
++                                                                            userInfo:@{@"pid": @(getpid()),
++                                                                                       @"processName": (NSString*)windows_process_name}
++                                                                  deliverImmediately:YES];
+         }
+     }
+ 
+@@ -2358,6 +2358,21 @@
+         NSNumber* displayID;
+         NSDictionary* modesToRealize = [latentDisplayModes autorelease];
+ 
++        /* Accessory windows keep the previous regular app's menu bar. Let the
++           native owner install its menus, then yield focus back to this window. */
++        if (self.dockOwner && !self.dockOwner.terminated && windows_process_name &&
++            [(NSString*)windows_process_name caseInsensitiveCompare:@"MTGO.exe"] == NSOrderedSame &&
++            [NSWorkspace sharedWorkspace].menuBarOwningApplication.processIdentifier != self.dockOwner.processIdentifier)
++        {
++            if ([NSApp respondsToSelector:@selector(yieldActivationToApplication:)])
++                [NSApp yieldActivationToApplication:self.dockOwner];
++            [[NSDistributedNotificationCenter defaultCenter] postNotificationName:WineAppDockProxyActivated
++                                                                          object:[@(self.dockOwner.processIdentifier) stringValue]
++                                                                        userInfo:@{@"pid": @(getpid()),
++                                                                                   @"processName": (NSString*)windows_process_name}
++                                                              deliverImmediately:YES];
++        }
++
+         latentDisplayModes = [[NSMutableDictionary alloc] init];
+         for (displayID in modesToRealize)
+         {
+@@ -2758,3 +2827,21 @@
+ 
+     return ret;
+ }
++
++/* Called only from Win32 DestroyWindow, not Cocoa window recreation or minimization. */
++void macdrv_notify_window_destroyed(macdrv_window window)
++{
++@autoreleasepool
++{
++    OnMainThread(^{
++        WineApplicationController* controller = [WineApplicationController sharedController];
++        if (controller.dockOwner && main_window_title && windows_process_name &&
++            [[(NSWindow*)window title] isEqualToString:(NSString*)main_window_title])
++            [[NSDistributedNotificationCenter defaultCenter] postNotificationName:WineAppDockProxyWindowClosed
++                                                                          object:[@(controller.dockOwner.processIdentifier) stringValue]
++                                                                        userInfo:@{@"pid": @(getpid()),
++                                                                                   @"processName": (NSString*)windows_process_name}
++                                                              deliverImmediately:YES];
++    });
++}
++}
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1285,6 +1285,9 @@
+ 
+     if (data->drag_event) NtSetEvent(data->drag_event, NULL);
+ 
++    if (main_window_title && data->cocoa_window)
++        macdrv_notify_window_destroyed(data->cocoa_window);
++
+     destroy_cocoa_window(data);
+ 
+     CFDictionaryRemoveValue(win_datas, hwnd);
+--- a/dlls/winemac.drv/cocoa_window.h
++++ b/dlls/winemac.drv/cocoa_window.h
+@@ -108,6 +108,7 @@
+     - (NSInteger) minimumLevelForActive:(BOOL)active;
+     - (void) updateFullscreen;
+ 
++    - (void) requestWindowAction:(NSString*)action;
+     - (void) postKeyEvent:(NSEvent *)theEvent;
+     - (void) postBroughtForwardEvent;
+ 
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -2711,6 +2711,26 @@
+         }
+     }
+ 
++    - (void) requestWindowAction:(NSString*)action
++    {
++        int type;
++        macdrv_event* event;
++
++        if (disabled || closing) return;
++
++        /* Borderless Win32 windows have no Cocoa titlebar buttons. Request the
++           corresponding system command instead of changing the Cocoa window. */
++        if ([action isEqualToString:@"close"]) type = WINDOW_CLOSE_REQUESTED;
++        else if ([action isEqualToString:@"minimize"]) type = WINDOW_MINIMIZE_REQUESTED;
++        else if ([action isEqualToString:@"zoom"])
++            type = maximized ? WINDOW_RESTORE_REQUESTED : WINDOW_MAXIMIZE_REQUESTED;
++        else return;
++
++        event = macdrv_create_event(type, self);
++        [queue postEvent:event];
++        macdrv_release_event(event);
++    }
++
+     - (void) miniaturize:(id)sender
+     {
+         /* When Stage Manager is enabled, miniaturize: just moves the app/window to

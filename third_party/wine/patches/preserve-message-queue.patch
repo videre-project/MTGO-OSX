@@ -1,0 +1,15 @@
+--- a/server/queue.c
++++ b/server/queue.c
+@@ -1341,9 +1341,12 @@
+     struct msg_queue *queue = get_fd_user( fd );
+     assert( queue->obj.ops == &msg_queue_ops );
+ 
++    /* Waking a waiter can terminate its process and release the queue. */
++    grab_object( queue );
+     if (event & (POLLERR | POLLHUP)) set_fd_events( fd, -1 );
+     else set_fd_events( queue->fd, 0 );
+     set_queue_bits( queue, QS_DRIVER );
++    release_object( queue );
+ }
+ 
+ static void thread_input_dump( struct object *obj, int verbose )

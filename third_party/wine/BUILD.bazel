@@ -1,0 +1,45 @@
+load("//third_party:native.bzl", "native_library")
+
+arm64_patches = [
+    "patches/anycpu-arm64.patch",
+    "patches/arm64x-native.patch",
+    "patches/arm64-unwind.patch",
+    "patches/macos-arm64-loader.patch",
+    "patches/macos-file-alignment.patch",
+    "patches/darwin-arm64-compat.patch",
+]
+
+common_patches = [
+    "patches/preserve-message-queue.patch",
+    "patches/skip-startup-window.patch",
+    "patches/macos-mtgo-identity.patch",
+    "patches/macos-dock-owner.patch",
+    "patches/macos-startup-transition.patch",
+    "patches/macos-dock-attention.patch",
+    "patches/preserve-minimized-surface.patch",
+    "patches/macos-main-thread-dispatch.patch",
+    "patches/macos-opengl-rectangles.patch",
+    "patches/wine-vulkan-portability.patch",
+]
+
+native_library(
+    name = "wine",
+    kind = "wine",
+    source = "@mtgo_wine//:source",
+    deps = ["//third_party/gnutls:gnutls", "//third_party/freetype:freetype", "//third_party/moltenvk:moltenvk"],
+    tools = {
+        "//third_party/llvm_mingw:llvm_mingw": "llvm_mingw",
+        "//third_party/m4:m4": "m4",
+        "//third_party/bison:bison": "bison",
+        "//third_party/pkgconf:pkgconf": "pkgconf",
+    },
+    architecture_options = {
+        "arm64": {"patches": common_patches + arm64_patches},
+        "x86_64": {"patches": common_patches},
+    },
+    configure_options = [
+        "--enable-win64", "--with-mingw=clang", "--disable-tests",
+        "--without-x", "--without-wayland", "--with-vulkan",
+    ],
+    visibility = ["//visibility:public"],
+)

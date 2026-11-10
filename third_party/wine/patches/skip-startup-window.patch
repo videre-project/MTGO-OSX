@@ -1,0 +1,92 @@
+Prevent configured splash windows from reaching Cocoa ordering and Dock activation.
+Win32 visibility and message delivery remain unchanged. The option defaults off
+and can be scoped through Wine's existing per-application Mac Driver settings.
+
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -57,6 +57,7 @@
+ int gl_surface_mode = GL_SURFACE_IN_FRONT_OPAQUE;
+ bool retina_enabled = false;
+ bool enable_app_nap = false;
++WCHAR skip_window_title[256];
+ 
+ pthread_key_t macdrv_thread_data_key = 0;
+ UINT64 app_icon_callback = 0;
+@@ -371,6 +372,9 @@
+ 
+     if (!get_config_key(hkey, appkey, "EnableAppNap", buffer, sizeof(buffer)))
+         enable_app_nap = IS_OPTION_TRUE(buffer[0]);
++
++    if (!get_config_key(hkey, appkey, "SkipWindowTitle", buffer, sizeof(buffer)))
++        lstrcpynW(skip_window_title, buffer, ARRAY_SIZE(skip_window_title));
+ 
+     /* Don't use appkey.  The DPI and monitor sizes should be consistent for all
+        processes in the prefix. */
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -129,6 +129,7 @@
+ extern bool retina_enabled;  /* Whether Retina mode is enabled via registry setting. */
+ extern bool retina_on;       /* Whether Retina mode is currently active (enabled and display is in default mode). */
+ extern bool enable_app_nap;
++extern UniChar skip_window_title[256];
+ 
+ static inline CGRect cgrect_mac_from_win(CGRect rect)
+ {
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -44,6 +44,7 @@
+ static CFMutableDictionaryRef win_datas;
+ 
+ static unsigned int activate_on_focus_time;
++static BOOL initial_window_shown;
+ 
+ 
+ /* per-monitor DPI aware NtUserSetWindowPos call */
+@@ -634,6 +635,18 @@
+     BOOL activate = FALSE;
+     GUITHREADINFO info;
+ 
++    if (skip_window_title[0])
++    {
++        WCHAR title[256] = {0};
++        NtUserInternalGetWindowText(data->hwnd, title, ARRAY_SIZE(title));
++        /* Defer unnamed startup windows until their title can be classified. */
++        if ((!title[0] && !initial_window_shown) || !wcscmp(title, skip_window_title))
++        {
++            TRACE("deferring native window %p title %s\n", data->hwnd, debugstr_w(title));
++            return;
++        }
++    }
++
+     /* find window that this one must be after */
+     prev = NtUserGetWindowRelative(data->hwnd, GW_HWNDPREV);
+     while (prev && !((NtUserGetWindowLongW(prev, GWL_STYLE) & (WS_VISIBLE | WS_MINIMIZE)) == WS_VISIBLE &&
+@@ -655,6 +668,7 @@
+         activate = activate_on_focus_time && (NtGetTickCount() - activate_on_focus_time < 2000);
+     macdrv_order_cocoa_window(data->cocoa_window, prev_window, next_window, activate);
+     data->on_screen = TRUE;
++    initial_window_shown = TRUE;
+ 
+     info.cbSize = sizeof(info);
+     if (NtUserGetGUIThreadInfo(NtUserGetWindowThread(data->hwnd, NULL), &info) && info.hwndFocus &&
+@@ -1426,6 +1440,20 @@
+ 
+     if ((win = macdrv_get_cocoa_window(hwnd, FALSE)))
+         macdrv_set_cocoa_window_title(win, text, wcslen(text));
++
++    if (skip_window_title[0] && text[0])
++    {
++        struct macdrv_win_data *data = get_win_data(hwnd);
++        if (data)
++        {
++            if (data->cocoa_window && !data->on_screen &&
++                (NtUserGetWindowLongW(hwnd, GWL_STYLE) & WS_VISIBLE) &&
++                (data->layered || data->ulw_layered ||
++                 !(NtUserGetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_LAYERED)))
++                show_window(data);
++            release_win_data(data);
++        }
++    }
+ }
+ 
+ 

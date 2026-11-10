@@ -1,0 +1,35 @@
+--- a/dlls/ntdll/unwind.c
++++ b/dlls/ntdll/unwind.c
+@@ -766,8 +766,12 @@
+ 
+         if (pc >= start)
+         {
+-            ULONG len = func[pos].Flag ? func[pos].FunctionLength :
+-                ((IMAGE_ARM64_RUNTIME_FUNCTION_ENTRY_XDATA *)(base + func[pos].UnwindData))->FunctionLength;
++            ULONG len;
++            /* Flag 3 describes a 12-byte adrp/add/br forwarding stub, not
++             * packed unwind fields. Its remaining bits reference parent pdata. */
++            if (func[pos].Flag == 3) len = 3;
++            else if (func[pos].Flag) len = func[pos].FunctionLength;
++            else len = ((IMAGE_ARM64_RUNTIME_FUNCTION_ENTRY_XDATA *)(base + func[pos].UnwindData))->FunctionLength;
+             if (pc < start + 4 * len) return func + pos;
+             min = pos + 1;
+         }
+@@ -804,7 +808,7 @@
+ 
+     context->ContextFlags |= CONTEXT_UNWOUND_TO_CALL;
+ 
+-    if (!func)  /* leaf function */
++    if (!func || func->Flag == 3)  /* leaf function or forwarding stub */
+     {
+         context->Pc = context->Lr;
+         *frame_ret = context->Sp;
+@@ -966,7 +970,7 @@
+     if (count)
+     {
+         RUNTIME_FUNCTION *func = table + count - 1;
+-        ULONG len = func->Flag ? func->FunctionLength :
++        ULONG len = func->Flag == 3 ? 3 : func->Flag ? func->FunctionLength :
+             ((IMAGE_ARM64_RUNTIME_FUNCTION_ENTRY_XDATA *)(base + func->UnwindData))->FunctionLength;
+         end += func->BeginAddress + 4 * len;
+     }

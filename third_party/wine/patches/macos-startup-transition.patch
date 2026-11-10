@@ -1,0 +1,193 @@
+Hold the configured main window transparent and report its Cocoa bounds to the
+native Dock owner. Activation can request a crossfade at the window's final size;
+normal reopening and Reduce Motion keep immediate presentation.
+
+--- a/dlls/winemac.drv/cocoa_app.h
++++ b/dlls/winemac.drv/cocoa_app.h
+@@ -108,6 +108,8 @@
+ 
+     + (WineApplicationController*) sharedController;
+ 
++    - (BOOL) prepareStartupWindow:(WineWindow*)window;
++    - (void) revealStartupWindowIfReady;
+     - (void) transformProcessToForeground:(BOOL)activateIfTransformed;
+     - (void) tryToActivateIgnoringOtherApps:(BOOL)ignore;
+ 
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -19,7 +19,9 @@
+  */
+ 
+ #include <limits.h>
++#include <math.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <unistd.h>
+ 
+ #import "cocoa_app.h"
+@@ -115,6 +117,12 @@
+ @property (retain, nonatomic) NSRunningApplication* dockOwner;
+ @property (assign, nonatomic) dispatch_source_t dockOwnerMonitor;
+ @property (assign, nonatomic) BOOL foregroundInitialized;
++@property (retain, nonatomic) WineWindow* startupWindow;
++@property (assign, nonatomic) BOOL startupTransitionEnabled;
++@property (assign, nonatomic) BOOL startupRevealRequested;
++@property (assign, nonatomic) BOOL startupPresented;
++@property (assign, nonatomic) BOOL startupWindowAnnounced;
++@property (assign, nonatomic) NSTimeInterval startupDuration;
+ @property (readonly, nonatomic) BOOL inputSourceIsInputMethod;
+ @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
+ 
+@@ -133,6 +141,8 @@
+     @synthesize applicationIcon;
+     @synthesize applicationIconOverride;
+     @synthesize dockOwner, dockOwnerMonitor, foregroundInitialized;
++    @synthesize startupWindow, startupTransitionEnabled, startupRevealRequested, startupPresented;
++    @synthesize startupWindowAnnounced, startupDuration;
+     @synthesize cursorFrames, cursorTimer, cursor;
+     @synthesize mouseCaptureWindow;
+     @synthesize lastSetCursorPositionTime;
+@@ -237,6 +247,9 @@
+                 }
+             }
+ 
++            const char* transition = getenv("WINE_DOCK_STARTUP_TRANSITION");
++            self.startupTransitionEnabled = self.dockOwner && transition && !strcmp(transition, "1");
++
+             [self setupObservations];
+ 
+             keyboardType = LMGetKbdType();
+@@ -261,6 +274,7 @@
+             dispatch_release(dockOwnerMonitor);
+         }
+         [dockOwner release];
++        [startupWindow release];
+         [clipCursorHandler release];
+         [cursorTimer release];
+         [cursorFrames release];
+@@ -288,6 +302,43 @@
+         [self tryToActivateIgnoringOtherApps:YES];
+         [self unminimizeWindowIfNoneVisible];
+         [NSApp arrangeInFront:nil];
++        NSNumber* duration = [notification.userInfo objectForKey:@"transitionDuration"];
++        NSTimeInterval seconds = [duration isKindOfClass:[NSNumber class]] ? [duration doubleValue] : 0;
++        self.startupDuration = isfinite(seconds) && seconds > 0 ? MIN(seconds, 1.0) : 0;
++        self.startupRevealRequested = YES;
++        [self revealStartupWindowIfReady];
++    }
++
++    - (BOOL) prepareStartupWindow:(WineWindow*)window
++    {
++        if (!self.startupTransitionEnabled || self.startupPresented || !main_window_title ||
++            ![[window title] isEqualToString:(NSString*)main_window_title])
++            return NO;
++        if (self.startupWindow != window) self.startupWindowAnnounced = NO;
++        self.startupWindow = window;
++        [window deferStartupPresentation];
++        return YES;
++    }
++
++    - (void) revealStartupWindowIfReady
++    {
++        if (![self.startupWindow isVisible]) return;
++        if (!self.startupWindowAnnounced && self.dockOwner && windows_process_name)
++        {
++            NSRect frame = [self.startupWindow frame];
++            self.startupWindowAnnounced = YES;
++            [[NSDistributedNotificationCenter defaultCenter] postNotificationName:WineAppDockProxyReady
++                                                                          object:[@(self.dockOwner.processIdentifier) stringValue]
++                                                                        userInfo:@{@"pid": @(getpid()),
++                                                                                   @"processName": (NSString*)windows_process_name,
++                                                                                   @"frame": @{@"x": @(NSMinX(frame)), @"y": @(NSMinY(frame)),
++                                                                                               @"width": @(NSWidth(frame)), @"height": @(NSHeight(frame))}}
++                                                              deliverImmediately:YES];
++        }
++        if (!self.startupRevealRequested) return;
++        self.startupPresented = YES;
++        [self.startupWindow revealStartupPresentationWithDuration:self.startupDuration];
++        self.startupWindow = nil;
+     }
+ 
+     - (void) transformProcessToForeground:(BOOL)activateIfTransformed
+--- a/dlls/winemac.drv/cocoa_window.h
++++ b/dlls/winemac.drv/cocoa_window.h
+@@ -82,6 +82,9 @@
+     BOOL ignore_windowDeminiaturize;
+     BOOL ignore_windowResize;
+     BOOL fakingClose;
++    BOOL startupPresentationPending;
++    BOOL startupIgnoredMouseEvents;
++    CGFloat startupAlpha;
+ 
+     CAShapeLayer* contentViewMaskLayer;
+ }
+@@ -100,6 +103,8 @@
+    shaped, or has a child window that meets those criteria. */
+ @property (readonly, nonatomic) BOOL presentsVisibleContent;
+ 
++    - (void) deferStartupPresentation;
++    - (void) revealStartupPresentationWithDuration:(NSTimeInterval)duration;
+     - (NSInteger) minimumLevelForActive:(BOOL)active;
+     - (void) updateFullscreen;
+ 
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -1778,6 +1778,39 @@
+         *ancestorOfOther = otherAncestors.lastObject;;
+     }
+ 
++    - (void) deferStartupPresentation
++    {
++        if (startupPresentationPending) return;
++        startupPresentationPending = YES;
++        startupAlpha = [self alphaValue];
++        startupIgnoredMouseEvents = [self ignoresMouseEvents];
++        [self setIgnoresMouseEvents:YES];
++        [super setAlphaValue:0];
++    }
++
++    - (void) setAlphaValue:(CGFloat)alpha
++    {
++        if (startupPresentationPending) startupAlpha = alpha;
++        else [super setAlphaValue:alpha];
++    }
++
++    - (void) revealStartupPresentationWithDuration:(NSTimeInterval)duration
++    {
++        if (!startupPresentationPending || closing) return;
++        startupPresentationPending = NO;
++        [self setIgnoresMouseEvents:startupIgnoredMouseEvents];
++        if (duration <= 0 || [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion])
++        {
++            [super setAlphaValue:startupAlpha];
++            return;
++        }
++        [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
++            context.duration = duration;
++            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
++            [[self animator] setAlphaValue:startupAlpha];
++        } completionHandler:nil];
++    }
++
+     /* Returns whether or not the window was ordered in, which depends on if
+        its frame intersects any screen. */
+     - (void) orderBelow:(WineWindow*)prev orAbove:(WineWindow*)next activate:(BOOL)activate
+@@ -1790,7 +1823,9 @@
+             WineWindow* parent;
+             WineWindow* child;
+ 
+-            [controller transformProcessToForeground:!self.preventsAppActivation];
++            BOOL deferPresentation = [controller prepareStartupWindow:self];
++            if (deferPresentation) activate = NO;
++            [controller transformProcessToForeground:!self.preventsAppActivation && !deferPresentation];
+             if ([NSApp isHidden])
+                 [NSApp unhide:nil];
+             wasVisible = [self isVisible];
+@@ -1871,6 +1906,7 @@
+                 needAdjustWindowLevels = TRUE;
+             }
+             pendingOrderOut = FALSE;
++            [controller revealStartupWindowIfReady];
+ 
+             if ([self becameEligibleParentOrChild])
+                 needAdjustWindowLevels = TRUE;

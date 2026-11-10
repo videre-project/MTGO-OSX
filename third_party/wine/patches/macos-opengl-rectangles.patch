@@ -1,0 +1,157 @@
+Preserve viewport and scissor state at Cocoa drawable updates, including updates
+performed while another context is current. CGL state copying keeps the rendering
+context off Cocoa's thread. Initialize the default window viewport once, so later
+drawable changes retain application state.
+
+--- a/dlls/winemac.drv/cocoa_opengl.h
++++ b/dlls/winemac.drv/cocoa_opengl.h
+@@ -28,6 +28,9 @@
+     BOOL needsReattach;
+ 
+     GLint backing_size[2];
++    CGLContextObj savedState;
++    unsigned int stateDepth;
++    BOOL disposing;
+ }
+ 
+ @property BOOL needsUpdate;
+--- a/dlls/winemac.drv/cocoa_opengl.m
++++ b/dlls/winemac.drv/cocoa_opengl.m
+@@ -35,6 +35,7 @@
+ 
+     + (NSView*) dummyView;
+     - (void) wine_updateBackingSize:(const CGSize*)size;
++    - (void) preserveRectangles:(dispatch_block_t)block;
+ 
+ @end
+ 
+@@ -45,9 +46,52 @@
+ 
+     - (void) dealloc
+     {
++        disposing = YES;
+         [[self view] release];
+         [latentView release];
++        if (savedState) CGLReleaseContext(savedState);
++        savedState = NULL;
+         [super dealloc];
++    }
++
++    /* CGL state copying does not make this context current on Cocoa's thread. */
++    - (void) preserveRectangles:(dispatch_block_t)block
++    {
++        CGLContextObj cgl = self.CGLContextObj;
++        BOOL copied = FALSE;
++        const GLbitfield mask = GL_VIEWPORT_BIT | GL_SCISSOR_BIT;
++
++        /* Superclass teardown can invoke the drawable overrides. */
++        if (disposing)
++        {
++            block();
++            return;
++        }
++        CGLLockContext(cgl);
++        if (!stateDepth++)
++        {
++            CGLError error = kCGLNoError;
++            if (!savedState)
++                error = CGLCreateContext(CGLGetPixelFormat(cgl), cgl, &savedState);
++            if (!error)
++                error = CGLCopyContext(cgl, savedState, mask);
++            if (error) ERR(@"Failed to preserve OpenGL rectangles: %d", error);
++            copied = error == kCGLNoError;
++        }
++        @try
++        {
++            block();
++        }
++        @finally
++        {
++            if (copied)
++            {
++                CGLError error = CGLCopyContext(savedState, cgl, mask);
++                if (error) ERR(@"Failed to restore OpenGL rectangles: %d", error);
++            }
++            --stateDepth;
++            CGLUnlockContext(cgl);
++        }
+     }
+ 
+     + (NSView*) dummyView
+@@ -86,14 +130,11 @@
+             NSView* save = self.view;
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+-            if ([NSThread isMainThread])
+-            {
+-                [super clearDrawable];
+-                [super setView:save];
+-            }
+-            else OnMainThread(^{
+-                [super clearDrawable];
+-                [super setView:save];
++            OnMainThread(^{
++                [self preserveRectangles:^{
++                    [super clearDrawable];
++                    [super setView:save];
++                }];
+             });
+ #pragma clang diagnostic pop
+         }
+@@ -137,10 +178,8 @@
+     - (void) setView:(NSView*)newView
+     {
+         NSView* oldView = [self view];
+-        if ([NSThread isMainThread])
+-            [super setView:newView];
+-        else OnMainThread(^{
+-            [super setView:newView];
++        OnMainThread(^{
++            [self preserveRectangles:^{ [super setView:newView]; }];
+         });
+         [newView retain];
+         [oldView release];
+@@ -149,14 +188,19 @@
+     - (void) clearDrawable
+     {
+         NSView* oldView = [self view];
+-        if ([NSThread isMainThread])
+-            [super clearDrawable];
+-        else OnMainThread(^{
+-            [super clearDrawable];
++        OnMainThread(^{
++            [self preserveRectangles:^{ [super clearDrawable]; }];
+         });
+         [oldView release];
+ 
+         [self wine_updateBackingSize:NULL];
++    }
++
++    - (void) update
++    {
++        OnMainThread(^{
++            [self preserveRectangles:^{ [super update]; }];
++        });
+     }
+ 
+     /* On at least some versions of Mac OS X, -[NSOpenGLContext clearDrawable] has the
+--- a/dlls/opengl32/unix_wgl.c
++++ b/dlls/opengl32/unix_wgl.c
+@@ -945,10 +945,13 @@
+         else wrap_glDrawBuffers( teb, ctx->draw_buffer_count, ctx->draw_buffers, funcs->p_glDrawBuffers );
+     }
+     if (!ctx->read_fbo) wrap_glReadBuffer( teb, ctx->read_buffer, funcs->p_glReadBuffer );
+-    if (!ctx->has_viewport && draw->draw_fbo && draw->client)
+-    {
+-        funcs->p_glViewport( 0, 0, draw->virtual_size.cx, draw->virtual_size.cy );
+-        funcs->p_glScissor( 0, 0, draw->virtual_size.cx, draw->virtual_size.cy );
++    if (!ctx->has_viewport)
++    {
++        if (draw->client)
++        {
++            funcs->p_glViewport( 0, 0, draw->virtual_size.cx, draw->virtual_size.cy );
++            funcs->p_glScissor( 0, 0, draw->virtual_size.cx, draw->virtual_size.cy );
++        }
+         ctx->has_viewport = GL_TRUE;
+     }
+ }

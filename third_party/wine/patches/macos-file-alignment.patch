@@ -1,0 +1,20 @@
+--- a/tools/winegcc/winegcc.c
++++ b/tools/winegcc/winegcc.c
+@@ -2005,7 +2005,16 @@
+     if (!section_align)
+         section_align = (target.cpu == CPU_ARM64 || target.cpu == CPU_ARM64EC) ? "0x10000" : "0x1000";
+ 
+-    if (!file_align) file_align = section_align;
++    if (!file_align)
++    {
++        file_align = section_align;
++#ifdef __APPLE__
++        /* Keep ARM64 files mappable on 16 KB hosts without 64 KB file padding. */
++        if ((target.cpu == CPU_ARM64 || target.cpu == CPU_ARM64EC) &&
++            strtoul( section_align, NULL, 0 ) > 0x4000)
++            file_align = "0x4000";
++#endif
++    }
+ 
+     if (!is_pe && target.cpu != CPU_i386 && target.cpu != CPU_x86_64)
+         error( "Non-PE builds are not supported on this platform. You need to use something like '--target=%s-windows'.\n",

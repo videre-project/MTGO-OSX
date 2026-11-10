@@ -1,0 +1,463 @@
+--- a/configure
++++ b/configure
+@@ -12392,7 +12392,7 @@
+ 
+ 
+     case $HOST_ARCH in
+-      aarch64) WINELOADER_LDFLAGS="-Wl,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
++      aarch64) WINELOADER_LDFLAGS="-Wl,-platform_version,macos,11.0,11.0,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+       *) WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+     esac
+ 
+--- a/configure.ac
++++ b/configure.ac
+@@ -982,7 +982,7 @@
+     AC_SUBST(SYSTEMCONFIGURATION_LIBS,"-framework SystemConfiguration")
+ 
+     case $HOST_ARCH in
+-      aarch64) WINELOADER_LDFLAGS="-Wl,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
++      aarch64) WINELOADER_LDFLAGS="-Wl,-platform_version,macos,11.0,11.0,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+       *) WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+     esac
+ 
+--- a/dlls/kernel32/process.c
++++ b/dlls/kernel32/process.c
+@@ -39,7 +39,8 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(process);
+ 
+-static const struct _KUSER_SHARED_DATA *user_shared_data = (struct _KUSER_SHARED_DATA *)0x7ffe0000;
++extern void * __cdecl __wine_get_user_shared_data(void);
++#define user_shared_data ((const struct _KUSER_SHARED_DATA *)__wine_get_user_shared_data())
+ 
+ typedef struct
+ {
+--- a/dlls/kernel32/sync.c
++++ b/dlls/kernel32/sync.c
+@@ -42,7 +42,8 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(sync);
+ 
+-static const struct _KUSER_SHARED_DATA *user_shared_data = (struct _KUSER_SHARED_DATA *)0x7ffe0000;
++extern void * __cdecl __wine_get_user_shared_data(void);
++#define user_shared_data ((const struct _KUSER_SHARED_DATA *)__wine_get_user_shared_data())
+ 
+ 
+ static void get_create_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRING *nameW,
+--- a/dlls/kernelbase/memory.c
++++ b/dlls/kernelbase/memory.c
+@@ -40,7 +40,8 @@
+ WINE_DECLARE_DEBUG_CHANNEL(virtual);
+ WINE_DECLARE_DEBUG_CHANNEL(globalmem);
+ 
+-static const struct _KUSER_SHARED_DATA *user_shared_data = (struct _KUSER_SHARED_DATA *)0x7ffe0000;
++extern void * __cdecl __wine_get_user_shared_data(void);
++#define user_shared_data ((const struct _KUSER_SHARED_DATA *)__wine_get_user_shared_data())
+ 
+ static CRITICAL_SECTION memstatus_section;
+ static CRITICAL_SECTION_DEBUG critsect_debug =
+--- a/dlls/kernelbase/sync.c
++++ b/dlls/kernelbase/sync.c
+@@ -39,7 +39,8 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(sync);
+ 
+-static const struct _KUSER_SHARED_DATA *user_shared_data = (struct _KUSER_SHARED_DATA *)0x7ffe0000;
++extern void * __cdecl __wine_get_user_shared_data(void);
++#define user_shared_data ((const struct _KUSER_SHARED_DATA *)__wine_get_user_shared_data())
+ 
+ /* check if current version is NT or Win95 */
+ static inline BOOL is_version_nt(void)
+--- a/dlls/ntdll/ntdll.spec
++++ b/dlls/ntdll/ntdll.spec
+@@ -1781,3 +1781,7 @@
+ @ cdecl wine_get_version()
+ @ cdecl wine_get_build_id()
+ @ cdecl wine_get_host_version(ptr ptr)
++
++# Wine internal shared-data mapping (may differ from the Windows fixed address).
++@ extern -private __wine_user_shared_data user_shared_data
++@ cdecl -norelay __wine_get_user_shared_data()
+--- a/dlls/ntdll/thread.c
++++ b/dlls/ntdll/thread.c
+@@ -37,6 +37,12 @@
+ 
+ struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x7ffe0000;
+ 
++/* The Unix loader supplies the actual mapping before entering PE code. */
++void * __cdecl __wine_get_user_shared_data(void)
++{
++    return user_shared_data;
++}
++
+ struct debug_info
+ {
+     unsigned int str_pos;       /* current position in strings buffer */
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -1563,6 +1563,7 @@
+     void **p__wine_unix_call_dispatcher;
+     void **p__wine_unix_call_dispatcher_arm64ec = NULL;
+     unixlib_handle_t *p__wine_unixlib_handle;
++    struct _KUSER_SHARED_DATA **p__wine_user_shared_data;
+     const IMAGE_EXPORT_DIRECTORY *exports;
+ 
+     exports = get_module_data_dir( module, IMAGE_DIRECTORY_ENTRY_EXPORT, NULL );
+@@ -1584,6 +1585,8 @@
+     GET_FUNC( __wine_syscall_dispatcher );
+     GET_FUNC( __wine_unix_call_dispatcher );
+     GET_FUNC( __wine_unixlib_handle );
++    GET_FUNC( __wine_user_shared_data );
++    *p__wine_user_shared_data = user_shared_data;
+     if (is_arm64ec())
+     {
+         GET_FUNC( __wine_unix_call_dispatcher_arm64ec );
+--- a/dlls/ntdll/unix/server.c
++++ b/dlls/ntdll/unix/server.c
+@@ -1326,7 +1326,14 @@
+     int fd_cwd = open( ".", O_RDONLY );
+ 
+ #ifdef _SC_PAGESIZE
+-    if (sysconf( _SC_PAGESIZE ) != 4096)
++    long host_pagesize = sysconf( _SC_PAGESIZE );
++
++#if defined(__APPLE__) && defined(__aarch64__)
++    /* The native Darwin port accounts for 16K host pages separately from Windows pages. */
++    if (host_pagesize != 4096 && host_pagesize != 16384)
++#else
++    if (host_pagesize != 4096)
++#endif
+         MESSAGE("You are running with the wrong page size, expect problems!\nPlease also consult https://github.com/AndreRH/hangover/wiki/Page-Size\n");
+ #endif
+ 
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -1104,6 +1104,112 @@
+ }
+ 
+ 
++#ifdef __APPLE__
++/* Darwin reserves the low 4 GB. Wine code uses the mapped pointer;
++ * unmodified Windows code can still read KUSER_SHARED_DATA at its fixed ABI
++ * address. Emulate ordinary integer loads from that read-only page only. */
++static ULONG64 get_load_register( ucontext_t *context, unsigned int reg, BOOL base )
++{
++    if (reg < 29) return REGn_sig( reg, context );
++    if (reg == 29) return FP_sig( context );
++    if (reg == 30) return LR_sig( context );
++    return base ? SP_sig( context ) : 0;
++}
++
++static void set_load_register( ucontext_t *context, unsigned int reg, ULONG64 value, BOOL base )
++{
++    if (reg < 29) REGn_sig( reg, context ) = value;
++    else if (reg == 29) FP_sig( context ) = value;
++    else if (reg == 30) LR_sig( context ) = value;
++    else if (base) SP_sig( context ) = value;
++}
++
++static BOOL handle_same_page_store( ucontext_t *context, const EXCEPTION_RECORD *rec )
++{
++    ULONG_PTR fault = rec->ExceptionInformation[1], base, address;
++    unsigned int instr, rn, rt, rt2, mode, width, opc;
++    LONG64 offset;
++    BYTE buffer[16];
++    ULONG64 value;
++
++    if (rec->ExceptionInformation[0] != EXCEPTION_WRITE_FAULT ||
++        (fault & ~(get_host_page_size() - 1)) != (PC_sig(context) & ~(get_host_page_size() - 1))) return FALSE;
++    instr = *(const ULONG *)PC_sig(context);
++    /* STP/STNP integer registers, 32 or 64 bits, all immediate modes. */
++    if ((instr & 0x3e400000) != 0x28000000) return FALSE;
++    opc = instr >> 30;
++    if (opc != 0 && opc != 2) return FALSE;
++    width = opc == 2 ? 8 : 4;
++    mode = (instr >> 23) & 3;
++    rn = (instr >> 5) & 31;
++    rt = instr & 31;
++    rt2 = (instr >> 10) & 31;
++    if ((mode & 1) && rn != 31 && (rn == rt || rn == rt2)) return FALSE;
++    offset = ((INT32)(instr << 10) >> 25) * (LONG64)width;
++    base = get_load_register( context, rn, TRUE );
++    address = base + (mode == 1 ? 0 : offset);
++    if (fault < address || fault >= address + 2 * width) return FALSE;
++    value = get_load_register( context, rt, FALSE );
++    memcpy( buffer, &value, width );
++    value = get_load_register( context, rt2, FALSE );
++    memcpy( buffer + width, &value, width );
++    if (!virtual_store_exec_memory( (void *)address, buffer, 2 * width )) return FALSE;
++    if (mode & 1) set_load_register( context, rn, base + offset, TRUE );
++    PC_sig(context) += 4;
++    TRACE( "emulated same-page store %08x to %p\n", instr, (void *)address );
++    return TRUE;
++}
++
++static BOOL handle_shared_data_load( ucontext_t *context, const EXCEPTION_RECORD *rec )
++{
++    ULONG_PTR fault = rec->ExceptionInformation[1], address, base;
++    unsigned int instr, size, opc, rn, rt, mode = 0;
++    LONG64 offset = 0;
++    ULONG64 value = 0;
++    BOOL acquire = FALSE;
++
++    if (rec->ExceptionInformation[0] != EXCEPTION_READ_FAULT ||
++        fault < 0x7ffe0000 || fault >= 0x7ffe1000 || (PC_sig(context) & 3)) return FALSE;
++    instr = *(const ULONG *)PC_sig(context);
++    size = instr >> 30;
++    opc = (instr >> 22) & 3;
++    rn = (instr >> 5) & 31;
++    rt = instr & 31;
++    base = get_load_register( context, rn, TRUE );
++    if ((instr & 0x3f000000) == 0x39000000) /* LDR[B/H/SW], unsigned immediate */
++        offset = ((instr >> 10) & 0xfff) << size;
++    else if ((instr & 0x3f200000) == 0x38000000) /* unscaled/pre/post immediate */
++    {
++        mode = (instr >> 10) & 3;
++        if (mode == 2 || (mode && rn != 31 && rn == rt)) return FALSE;
++        offset = (INT32)(instr << 11) >> 23;
++    }
++    else if ((instr & 0x3ffffc00) == 0x08dffc00) /* LDAR[B/H] */
++    {
++        opc = 1;
++        acquire = TRUE;
++    }
++    else
++    {
++        WARN( "unhandled shared-data load opcode %08x at %p\n", instr, (void *)PC_sig(context) );
++        return FALSE;
++    }
++    if (!opc || (opc == 2 && size == 3) || (opc == 3 && size >= 2)) return FALSE;
++    address = base + (mode == 1 ? 0 : offset);
++    if (address != fault || address < 0x7ffe0000 || address > 0x7ffe1000 - (1u << size)) return FALSE;
++    memcpy( &value, (const char *)user_shared_data + address - 0x7ffe0000, 1u << size );
++    if (acquire) __atomic_thread_fence( __ATOMIC_ACQUIRE );
++    if (opc >= 2) value = (LONG64)(value << (64 - (8u << size))) >> (64 - (8u << size));
++    if (opc == 3) value = (ULONG)value;
++    if (mode) set_load_register( context, rn, base + offset, TRUE );
++    set_load_register( context, rt, value, FALSE );
++    PC_sig(context) += 4;
++    TRACE( "read fixed shared data at %p using %08x\n", (void *)address, instr );
++    return TRUE;
++}
++#endif
++
++
+ /**********************************************************************
+  *		segv_handler
+  *
+@@ -1146,6 +1252,10 @@
+     rec.ExceptionInformation[1] = (ULONG_PTR)siginfo->si_addr;
+     rec.NumberParameters = 2;
+ 
++#ifdef __APPLE__
++    if (handle_shared_data_load( sigcontext, &rec )) return;
++    if (handle_same_page_store( sigcontext, &rec )) return;
++#endif
+     if (!virtual_handle_fault( data, &rec, (void *)SP_sig(sigcontext) )) return;
+     if (handle_syscall_fault( data, sigcontext, &rec )) return;
+ 
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -328,6 +328,7 @@
+ extern BOOL virtual_check_buffer_for_write( void *ptr, SIZE_T size );
+ extern SIZE_T virtual_uninterrupted_read_memory( const void *addr, void *buffer, SIZE_T size );
+ extern NTSTATUS virtual_uninterrupted_write_memory( void *addr, const void *buffer, SIZE_T size );
++extern BOOL virtual_store_exec_memory( void *addr, const void *buffer, SIZE_T size );
+ extern void virtual_set_force_exec( BOOL enable );
+ extern void virtual_enable_write_exceptions( BOOL enable );
+ extern void virtual_set_large_address_space(void);
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -182,7 +182,9 @@
+ #endif
+ 
+ /* Note: these are Windows limits, you cannot change them. */
+-#if defined(__i386__) || defined(__x86_64__)
++#if defined(__APPLE__) && defined(__aarch64__)
++static void *address_space_start = (void *)0x100000000; /* Darwin reserves the low 4 GB */
++#elif defined(__i386__) || defined(__x86_64__)
+ static void *address_space_start = (void *)0x110000; /* keep DOS area clear */
+ #else
+ static void *address_space_start = (void *)0x10000;
+@@ -202,7 +204,16 @@
+ static struct file_view *arm64ec_view;
+ 
+ ULONG_PTR user_space_wow_limit = 0;
++#if defined(__APPLE__) && defined(__aarch64__)
++struct _KUSER_SHARED_DATA *user_shared_data; /* mapped above Darwin PAGEZERO */
++#else
+ struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x7ffe0000;
++#endif
++
++DECLSPEC_EXPORT void * __cdecl __wine_get_user_shared_data(void)
++{
++    return user_shared_data;
++}
+ 
+ /* TEB allocation blocks */
+ static void *teb_block;
+@@ -1944,7 +1955,20 @@
+         if (!(unix_prot & PROT_WRITE)) return -1;
+     }
+ 
++#if defined(__APPLE__) && defined(__aarch64__)
++    if (mprotect( base, size, unix_prot ))
++    {
++        /* Darwin ARM64 rejects simultaneous write+execute protection. Keep the
++         * Windows permissions in the vprot table and initially allow writes;
++         * virtual_handle_fault switches the host page when code executes. */
++        if (errno != EACCES || (unix_prot & (PROT_WRITE | PROT_EXEC)) != (PROT_WRITE | PROT_EXEC))
++            return -1;
++        return mprotect( base, size, unix_prot & ~PROT_EXEC );
++    }
++    return 0;
++#else
+     return mprotect( base, size, unix_prot );
++#endif
+ }
+ 
+ 
+@@ -3686,6 +3710,21 @@
+     host_addr_space_limit = address_space_limit;
+ #endif
+ 
++#if defined(__APPLE__) && defined(__aarch64__)
++    {
++        struct task_vm_info info;
++        mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
++        if (task_info( mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count ) != KERN_SUCCESS ||
++            count < TASK_VM_INFO_REV2_COUNT)
++        {
++            ERR( "wine: could not query Darwin address-space bounds\n" );
++            exit(1);
++        }
++        address_space_start = (void *)ROUND_SIZE( 0, info.min_address, granularity_mask );
++        TRACE( "Darwin address-space minimum: %p\n", address_space_start );
++    }
++#endif
++
+     kernel_writewatch_init();
+ 
+     if (preload_info && *preload_info)
+@@ -3701,9 +3740,11 @@
+         {
+             preload_reserve_start = ROUND_ADDR( start, host_page_mask );
+             preload_reserve_end = (void *)ROUND_SIZE( 0, end, host_page_mask );
++#if !defined(__APPLE__) || !defined(__aarch64__)
+             /* some apps start inside the DOS area */
+             if (preload_reserve_start)
+                 address_space_start = min( address_space_start, preload_reserve_start );
++#endif
+         }
+         unsetenv( "WINEPRELOADRESERVE" );
+     }
+@@ -4074,8 +4115,18 @@
+         exit(1);
+     }
+ 
+-    NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, is_win64 ? limit_2g - 1 : 0, &total,
+-                             MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
++#if defined(__APPLE__) && defined(__aarch64__)
++    status = NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, 0, &total,
++                                      MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
++#else
++    status = NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, is_win64 ? limit_2g - 1 : 0, &total,
++                                      MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
++#endif
++    if (status)
++    {
++        ERR( "wine: failed to reserve the initial TEB block: %08x\n", status );
++        exit(1);
++    }
+     teb_block_pos = 30;
+     ptr = (char *)teb_block + 30 * block_size;
+     data_size = 2 * block_size;
+@@ -4604,6 +4655,38 @@
+ }
+ 
+ 
++#if defined(__APPLE__) && defined(__aarch64__)
++/* A store instruction and its destination can share a host page (the CLR's
++ * write-barrier initialization does this). Returning to a writable/no-execute
++ * page would just fault on instruction fetch. Perform the decoded store from
++ * this native signal-handler code, then restore execution permission. */
++BOOL virtual_store_exec_memory( void *addr, const void *buffer, SIZE_T size )
++{
++    char *page = ROUND_ADDR( addr, host_page_mask );
++    char *end = (char *)addr + size;
++    char *ptr;
++    BOOL ret = FALSE;
++
++    if (!size || end < (char *)addr || end > page + host_page_size) return FALSE;
++    mutex_lock( &virtual_mutex );
++    if (!is_vprot_exec_write( get_host_page_vprot( page ) )) goto done;
++    for (ptr = ROUND_ADDR( addr, page_mask ); ptr < end; ptr += page_size)
++    {
++        BYTE prot = get_page_vprot( ptr );
++        if ((prot & (VPROT_COMMITTED | VPROT_GUARD | VPROT_WRITEWATCH)) != VPROT_COMMITTED ||
++            !(get_unix_prot( prot ) & PROT_WRITE)) goto done;
++    }
++    if (mprotect( page, host_page_size, PROT_READ | PROT_WRITE )) goto done;
++    memcpy( addr, buffer, size );
++    __builtin___clear_cache( (char *)addr, end );
++    ret = !mprotect( page, host_page_size, PROT_READ | PROT_EXEC );
++done:
++    mutex_unlock( &virtual_mutex );
++    return ret;
++}
++#endif
++
++
+ /***********************************************************************
+  *           virtual_handle_fault
+  */
+@@ -4661,6 +4744,27 @@
+                 ret = STATUS_SUCCESS;
+         }
+     }
++#if defined(__APPLE__) && defined(__aarch64__)
++    if (ret == STATUS_ACCESS_VIOLATION && is_vprot_exec_write( vprot ) &&
++        !(vprot & (VPROT_GUARD | VPROT_WRITEWATCH)) &&
++        !(err == EXCEPTION_WRITE_FAULT && ROUND_ADDR( rec->ExceptionAddress, host_page_mask ) == page))
++    {
++        BYTE page_prot = get_page_vprot( addr );
++        int requested = err == EXCEPTION_EXECUTE_FAULT ? PROT_EXEC :
++                        err == EXCEPTION_WRITE_FAULT ? PROT_WRITE : 0;
++
++        /* Check the faulting Windows page as well as the combined host page.
++         * Never turn a genuine guard, write-watch or access violation into a
++         * host W^X transition. Normal mappings and Windows metadata stay intact. */
++        if (requested && (get_unix_prot( page_prot ) & requested) &&
++            !mprotect( page, host_page_size, PROT_READ | requested ))
++        {
++            TRACE( "Darwin W^X transition at %p to %s\n", page,
++                   requested == PROT_EXEC ? "execute" : "write" );
++            ret = STATUS_SUCCESS;
++        }
++    }
++#endif
+     mutex_unlock( &virtual_mutex );
+     rec->ExceptionCode = ret;
+     return ret;
+@@ -5097,7 +5201,9 @@
+     {
+         if (!is_wow64())
+         {
++#if !defined(__APPLE__) || !defined(__aarch64__)
+             address_space_start = (void *)0x10000;
++#endif
+ #ifndef __APPLE__  /* don't free the zerofill section on macOS */
+             if ((main_image_info.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA) &&
+                 (main_image_info.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE))
+--- a/dlls/win32u/message.c
++++ b/dlls/win32u/message.c
+@@ -45,7 +45,8 @@
+ #define QS_HARDWARE     0x40000000
+ #define QS_INTERNAL     (QS_DRIVER | QS_HARDWARE)
+ 
+-static const struct _KUSER_SHARED_DATA *user_shared_data = (struct _KUSER_SHARED_DATA *)0x7ffe0000;
++extern void * __cdecl __wine_get_user_shared_data(void);
++#define user_shared_data ((const struct _KUSER_SHARED_DATA *)__wine_get_user_shared_data())
+ 
+ static const struct ratio no_dpi;
+ 

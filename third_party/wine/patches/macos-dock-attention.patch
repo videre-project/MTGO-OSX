@@ -1,0 +1,114 @@
+Forward FlashWindowEx taskbar attention through the native Dock bridge.
+
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -36,6 +36,7 @@
+ static NSString* const WineAppDockProxyReady = @"WineAppDockProxyReady";
+ static NSString* const WineAppDockProxyActivated = @"WineAppDockProxyActivated";
+ static NSString* const WineAppDockProxyWindowClosed = @"WineAppDockProxyWindowClosed";
++static NSString* const WineAppDockProxyAttention = @"WineAppDockProxyAttention";
+ static NSString* const WineAppDockProxyActivate = @"WineAppDockProxyActivate";
+ static NSString* const WineAppDockProxyWindowAction = @"WineAppDockProxyWindowAction";
+ 
+@@ -131,6 +132,7 @@
+     - (void) setupObservations;
+     - (void) activateFromDock:(NSNotification*)notification;
+     - (void) performWindowAction:(NSNotification*)notification;
++    - (void) notifyDockAttention:(unsigned int)flags;
+     - (void) applicationDidBecomeActive:(NSNotification *)notification;
+ 
+     static void PerformRequest(void *info);
+@@ -302,6 +304,18 @@
+         [super dealloc];
+     }
+ 
++    - (void) notifyDockAttention:(unsigned int)flags
++    {
++        if (!self.dockOwner || self.dockOwner.terminated || !windows_process_name) return;
++
++        [[NSDistributedNotificationCenter defaultCenter] postNotificationName:WineAppDockProxyAttention
++                                                                      object:[@(self.dockOwner.processIdentifier) stringValue]
++                                                                    userInfo:@{@"pid": @(getpid()),
++                                                                               @"processName": (NSString*)windows_process_name,
++                                                                               @"flags": @(flags)}
++                                                          deliverImmediately:YES];
++    }
++
+     - (void) performWindowAction:(NSNotification*)notification
+     {
+         NSNumber* owner = [notification.userInfo objectForKey:@"ownerPID"];
+@@ -2359,6 +2373,9 @@
+         NSNumber* displayID;
+         NSDictionary* modesToRealize = [latentDisplayModes autorelease];
+ 
++        /* Clear taskbar attention even when the native owner already supplies the menus. */
++        [self notifyDockAttention:0];
++
+         /* Accessory windows keep the previous regular app's menu bar. Let the
+            native owner install its menus, then yield focus back to this window. */
+         if (self.dockOwner && !self.dockOwner.terminated && windows_process_name &&
+@@ -2932,3 +2949,14 @@
+     });
+ }
+ }
++
++/* Forward Windows taskbar attention to the native application's existing Dock entry. */
++void macdrv_request_attention(unsigned int flags)
++{
++@autoreleasepool
++{
++    OnMainThread(^{
++        [[WineApplicationController sharedController] notifyDockAttention:flags];
++    });
++}
++}
+--- a/dlls/winemac.drv/gdi.c
++++ b/dlls/winemac.drv/gdi.c
+@@ -251,6 +251,7 @@
+     .pDesktopWindowProc = macdrv_DesktopWindowProc,
+     .pDestroyCursorIcon = macdrv_DestroyCursorIcon,
+     .pDestroyWindow = macdrv_DestroyWindow,
++    .pFlashWindowEx = macdrv_FlashWindowEx,
+     .pUpdateDisplayDevices = macdrv_UpdateDisplayDevices,
+     .pGetCursorPos = macdrv_GetCursorPos,
+     .pGetKeyboardLayoutList = macdrv_GetKeyboardLayoutList,
+--- a/dlls/winemac.drv/macdrv.h
++++ b/dlls/winemac.drv/macdrv.h
+@@ -136,6 +136,7 @@
+ extern void macdrv_CleanupIcons(HWND hwnd);
+ extern LRESULT macdrv_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+ extern void macdrv_DestroyWindow(HWND hwnd);
++extern void macdrv_FlashWindowEx(FLASHWINFO *info);
+ extern void macdrv_SetDesktopWindow(HWND hwnd);
+ extern void macdrv_ActivateWindow(HWND hwnd, HWND previous);
+ extern void macdrv_SetLayeredWindowAttributes(HWND hwnd, COLORREF key, BYTE alpha,
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -500,6 +500,7 @@
+         CGRect frame, void* hwnd, macdrv_event_queue queue);
+ extern void macdrv_destroy_cocoa_window(macdrv_window w);
+ extern void macdrv_notify_window_destroyed(macdrv_window w);
++extern void macdrv_request_attention(unsigned int flags);
+ extern void* macdrv_get_window_hwnd(macdrv_window w);
+ extern void macdrv_set_cocoa_window_features(macdrv_window w,
+         const struct macdrv_window_features* wf);
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1273,6 +1273,17 @@
+ }
+ 
+ /***********************************************************************
++ *              FlashWindowEx   (MACDRV.@)
++ */
++void macdrv_FlashWindowEx(FLASHWINFO *info)
++{
++    /* Caption-only flashing must not change the application attention indicator. */
++    if (!info->dwFlags || (info->dwFlags & FLASHW_TRAY))
++        macdrv_request_attention(info->dwFlags);
++}
++
++
++/***********************************************************************
+  *              DestroyWindow   (MACDRV.@)
+  */
+ void macdrv_DestroyWindow(HWND hwnd)

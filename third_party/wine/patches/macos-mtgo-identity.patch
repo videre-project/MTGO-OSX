@@ -1,0 +1,138 @@
+--- a/loader/wine_info.plist.in
++++ b/loader/wine_info.plist.in
+@@ -9,11 +9,13 @@
+     <key>CFBundleExecutable</key>
+     <string>wine</string>
+     <key>CFBundleIdentifier</key>
+-    <string>org.winehq.wine</string>
++    <string>org.videreproject.MTGOOSX.Runtime</string>
+     <key>CFBundleInfoDictionaryVersion</key>
+     <string>6.0</string>
++    <key>CFBundleDisplayName</key>
++    <string>MTGO</string>
+     <key>CFBundleName</key>
+-    <string>Wine</string>
++    <string>MTGO</string>
+     <key>CFBundlePackageType</key>
+     <string>APPL</string>
+     <key>CFBundleShortVersionString</key>
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -58,6 +58,7 @@
+ bool retina_enabled = false;
+ bool enable_app_nap = false;
+ WCHAR skip_window_title[256];
++CFStringRef application_icon_path;
+ 
+ pthread_key_t macdrv_thread_data_key = 0;
+ UINT64 app_icon_callback = 0;
+@@ -306,6 +307,9 @@
+             NtClose(tmpkey);
+         }
+     }
++
++    if (!get_config_key(hkey, appkey, "ApplicationIcon", buffer, sizeof(buffer)) && buffer[0])
++        application_icon_path = CFStringCreateWithCharacters(NULL, buffer, lstrlenW(buffer));
+ 
+     if (!get_config_key(hkey, appkey, "WindowsFloatWhenInactive", buffer, sizeof(buffer)))
+     {
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -130,6 +130,7 @@
+ extern bool retina_on;       /* Whether Retina mode is currently active (enabled and display is in default mode). */
+ extern bool enable_app_nap;
+ extern UniChar skip_window_title[256];
++extern CFStringRef application_icon_path;
+ 
+ static inline CGRect cgrect_mac_from_win(CGRect rect)
+ {
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -102,6 +102,7 @@
+ @property (retain, nonatomic) NSTimer* cursorTimer;
+ @property (retain, nonatomic) NSCursor* cursor;
+ @property (retain, nonatomic) NSImage* applicationIcon;
++@property (retain, nonatomic) NSImage* applicationIconOverride;
+ @property (readonly, nonatomic) BOOL inputSourceIsInputMethod;
+ @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
+ 
+@@ -117,6 +118,7 @@
+ 
+     @synthesize keyboardType, lastFlagsChanged;
+     @synthesize applicationIcon;
++    @synthesize applicationIconOverride;
+     @synthesize cursorFrames, cursorTimer, cursor;
+     @synthesize mouseCaptureWindow;
+     @synthesize lastSetCursorPositionTime;
+@@ -186,6 +188,12 @@
+                 return nil;
+             }
+ 
++            if (application_icon_path)
++            {
++                self.applicationIconOverride = [[[NSImage alloc] initWithContentsOfFile:(NSString*)application_icon_path] autorelease];
++                self.applicationIcon = self.applicationIconOverride;
++            }
++
+             [self setupObservations];
+ 
+             keyboardType = LMGetKbdType();
+@@ -202,6 +210,7 @@
+         [cursor release];
+         [screenFrameCGRects release];
+         [applicationIcon release];
++        [applicationIconOverride release];
+         [clipCursorHandler release];
+         [cursorTimer release];
+         [cursorFrames release];
+@@ -245,8 +254,9 @@
+             mainMenu = [[[NSMenu alloc] init] autorelease];
+ 
+             // Application menu
+-            submenu = [[[NSMenu alloc] initWithTitle:WineLocalizedString(STRING_MENU_WINE)] autorelease];
+             bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString*)kCFBundleNameKey];
++            if (![bundleName length]) bundleName = WineLocalizedString(STRING_MENU_WINE);
++            submenu = [[[NSMenu alloc] initWithTitle:bundleName] autorelease];
+ 
+             if ([bundleName length])
+                 title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_HIDE_APPNAME), bundleName];
+@@ -272,7 +282,7 @@
+             item = [submenu addItemWithTitle:title action:@selector(terminate:) keyEquivalent:@"q"];
+             [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
+             item = [[[NSMenuItem alloc] init] autorelease];
+-            [item setTitle:WineLocalizedString(STRING_MENU_WINE)];
++            [item setTitle:bundleName];
+             [item setSubmenu:submenu];
+             [mainMenu addItem:item];
+ 
+@@ -1057,6 +1067,12 @@
+ 
+     - (void) setApplicationIconFromCGImageArray:(NSArray*)images
+     {
++        if (self.applicationIconOverride)
++        {
++            self.applicationIcon = self.applicationIconOverride;
++            return;
++        }
++
+         NSImage* nsimage = nil;
+ 
+         if ([images count])
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -437,6 +437,15 @@
+ 
+ static void preloader_exec( char **argv )
+ {
++#ifdef __APPLE__
++    /* LaunchServices identifies the application by the executed path. */
++    char *resolved = realpath( argv[1], NULL );
++    if (resolved)
++    {
++        free( argv[1] );
++        argv[1] = resolved;
++    }
++#endif
+ #ifdef HAVE_WINE_PRELOADER
+     asprintf( &argv[0], "%s-preloader", argv[1] );
+ #ifdef __APPLE__

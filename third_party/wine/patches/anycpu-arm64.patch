@@ -1,0 +1,32 @@
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -483,7 +483,7 @@
+ 
+     if (pe_info->wine_fakedll) res_start = res_end = 0;
+     if (pe_info->image_flags & IMAGE_FLAGS_ComPlusNativeReady)
+-        machine = is_machine_64bit( native_machine ) ? IMAGE_FILE_MACHINE_AMD64 : native_machine;
++        machine = native_machine;
+ 
+     signal( SIGPIPE, SIG_DFL );
+ 
+@@ -1439,7 +1439,7 @@
+         status = virtual_map_module( mapping, module, &size, info, 0, 0, machine );
+         if (status == STATUS_IMAGE_MACHINE_TYPE_MISMATCH && info->ComPlusNativeReady)
+         {
+-            info->Machine = is_machine_64bit( native_machine ) ? IMAGE_FILE_MACHINE_AMD64 : native_machine;
++            info->Machine = native_machine;
+             status = STATUS_SUCCESS;
+         }
+         NtClose( mapping );
+--- a/server/mapping.c
++++ b/server/mapping.c
+@@ -1702,8 +1702,7 @@
+         {
+             current->entry_point = view->base + req->entry;
+             if (view->image.image_flags & IMAGE_FLAGS_ComPlusNativeReady)
+-                current->process->machine = is_machine_64bit( native_machine )
+-                    ? IMAGE_FILE_MACHINE_AMD64 : native_machine;
++                current->process->machine = native_machine;
+             else
+                 current->process->machine = req->machine;
+         }
