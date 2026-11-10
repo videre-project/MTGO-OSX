@@ -1,0 +1,109 @@
+load("//tools:macos.bzl", "macos_test", "macos_tool")
+load("//tests:defs.bzl", "dock_attention_test", "launcher_integration_test", "mtgo_startup_test", "settings_test", "windows_fixture")
+
+macos_test(
+    name = "preparation",
+    srcs = ["integration/preparation_test.swift", "integration/user_data_tests.swift", "//src:preparation_sources"],
+    size = "small",
+    tags = ["requires-darwin", "no-remote"],
+)
+
+launcher_integration_test(
+    name = "launcher_startup",
+    app = "//src:MTGO",
+    size = "small",
+    tags = ["requires-darwin", "no-remote", "no-sandbox"],
+)
+
+macos_tool(
+    name = "settings_observer",
+    srcs = ["integration/settings_test.swift", "//src:application_components"],
+)
+
+settings_test(
+    name = "settings",
+    observer = ":settings_observer",
+    app = "//src:MTGO",
+    size = "small",
+    tags = ["exclusive", "requires-darwin", "no-remote", "no-sandbox"],
+)
+
+windows_fixture(
+    name = "startup_observer",
+    src = "integration/observers/StartupObserver.c",
+)
+
+macos_tool(
+    name = "launcher_observer",
+    srcs = ["integration/observers/LauncherObserver.swift"],
+)
+
+mtgo_startup_test(
+    name = "mtgo_startup",
+    app = "//src:MTGO",
+    observer = ":startup_observer",
+    launcher_observer = ":launcher_observer",
+    size = "large",
+    timeout = "long",
+    tags = ["external", "requires-darwin", "requires-network", "no-remote", "no-sandbox"],
+)
+
+filegroup(
+    name = "startup_specification",
+    srcs = ["integration/startup_test.py", "integration/fixtures.py"],
+)
+
+exports_files(["integration/run.py"])
+
+windows_fixture(
+    name = "startup_observer_x86_64",
+    src = "integration/observers/StartupObserver.c",
+    architecture = "x86_64",
+)
+
+mtgo_startup_test(
+    name = "mtgo_startup_x86_64",
+    app = "//src:MTGO_intel",
+    architecture = "x86_64",
+    runtime = "//src:runtime_intel",
+    runtime_archive = "//src:runtime_x86_64",
+    observer = ":startup_observer_x86_64",
+    launcher_observer = ":launcher_observer",
+    size = "large",
+    timeout = "long",
+    tags = ["manual", "external", "requires-darwin", "requires-network", "no-remote", "no-sandbox"],
+)
+
+macos_tool(
+    name = "attention_observer",
+    srcs = ["integration/attention_test.swift", "//src:dock_sources"],
+)
+
+windows_fixture(
+    name = "attention_window",
+    src = "integration/fixtures/AttentionWindow.c",
+)
+
+windows_fixture(
+    name = "attention_window_x86_64",
+    src = "integration/fixtures/AttentionWindow.c",
+    architecture = "x86_64",
+)
+
+dock_attention_test(
+    name = "dock_attention",
+    observer = ":attention_observer",
+    window = ":attention_window",
+    runtime = "//src:runtime",
+    size = "medium",
+    tags = ["exclusive", "requires-darwin", "no-remote", "no-sandbox"],
+)
+
+dock_attention_test(
+    name = "dock_attention_x86_64",
+    observer = ":attention_observer",
+    window = ":attention_window_x86_64",
+    runtime = "//src:runtime_intel",
+    size = "medium",
+    tags = ["exclusive", "manual", "requires-darwin", "no-remote", "no-sandbox"],
+)
