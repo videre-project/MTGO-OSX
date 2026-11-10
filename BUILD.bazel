@@ -1,6 +1,16 @@
+load("//tools:macos.bzl", "macos_dmg")
+
 exports_files(["LICENSE", "NOTICE"])
 
 alias(name = "MTGO", actual = "//src:MTGO")
 alias(name = "runtime_arm64", actual = "//src:runtime_arm64")
 alias(name = "runtime_x86_64", actual = "//src:runtime_x86_64")
 alias(name = "MTGO_opengl", actual = "//src:MTGO_opengl", tags = ["manual"])
+
+macos_dmg(
+    name = "dmg",
+    app = "//src:MTGO",
+    artwork = "//src:Resources/MTGO-Background.jpg",
+    font = "//src:Resources/Fonts/Inter.ttf",
+    renderer = "//tools:dmg_artwork",
+)
