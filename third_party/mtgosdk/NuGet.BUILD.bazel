@@ -1,0 +1,4 @@
+exports_files(
+    ["lib/net10.0-windows7.0/MTGOSDK.dll", "NOTICE"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,11 @@
+load("//third_party/mtgosdk:launcher.bzl", "sdk_launcher")
+
+sdk_launcher(
+    name = "launcher",
+    assembly = "@mtgosdk//:lib/net10.0-windows7.0/MTGOSDK.dll",
+    notice = "@mtgosdk//:NOTICE",
+    license = "//:LICENSE",
+    visibility = ["//visibility:public"],
+)
+
+exports_files(["NuGet.BUILD.bazel", "launcher.bzl"])
