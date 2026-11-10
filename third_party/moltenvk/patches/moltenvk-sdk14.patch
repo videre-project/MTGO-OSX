@@ -1,0 +1,182 @@
+--- a/MoltenVK/CMakeLists.txt
++++ b/MoltenVK/CMakeLists.txt
+@@ -24,21 +24,17 @@
+ )
+ 
+ # Record the MoltenVK GIT revision as a derived header file suitable for including in a build
+-find_package(Git)
+-if(GIT_FOUND)
+-	execute_process(
+-		COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+-		OUTPUT_VARIABLE MVK_GIT_REV
+-		ERROR_QUIET
+-		OUTPUT_STRIP_TRAILING_WHITESPACE
+-	)
+-	configure_file(
+-		"${CMAKE_CURRENT_SOURCE_DIR}/../Templates/cmake/mvkGitRevDerived.h.in"
+-		"${CMAKE_CURRENT_BINARY_DIR}/mvkGitRevDerived.h"
+-	)
+-else()
+-	message(FATAL_ERROR "GIT not found")
++if(NOT DEFINED MVK_GIT_REV)
++    find_package(Git REQUIRED)
++    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
++        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
++        OUTPUT_VARIABLE MVK_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE
++        COMMAND_ERROR_IS_FATAL ANY)
+ endif()
++configure_file(
++    "${CMAKE_CURRENT_SOURCE_DIR}/../Templates/cmake/mvkGitRevDerived.h.in"
++    "${CMAKE_CURRENT_BINARY_DIR}/mvkGitRevDerived.h"
++)
+ 
+ target_compile_definitions(MoltenVK PUBLIC
+ 	"MVK_FRAMEWORK_VERSION=${PROJECT_VERSION}"
+--- a/MoltenVK/MoltenVK/GPUObjects/MVKDevice.mm
++++ b/MoltenVK/MoltenVK/GPUObjects/MVKDevice.mm
+@@ -956,16 +956,20 @@
+ 	// MetalSharp: the MetalFX scalers of mvk_metalfx.h
+ 	if ([MTLFXTemporalScalerDescriptor supportsDevice: _mtlDevice] && [MTLFXSpatialScalerDescriptor supportsDevice: _mtlDevice]) {
+ 		strlcat(supportedProps12.driverInfo, " " VK_MVK_METALFX_DRIVER_INFO, VK_MAX_DRIVER_INFO_SIZE);
++#if MVK_XCODE_26
+ 		if (@available(macOS 26.0, iOS 26.0, *)) {
+ 			if ([MTLFXTemporalDenoisedScalerDescriptor supportsDevice: _mtlDevice]) {
+ 				strlcat(supportedProps12.driverInfo, " " VK_MVK_METALFX_DENOISED_DRIVER_INFO, VK_MAX_DRIVER_INFO_SIZE);
+ 			}
+ 		}
++#endif
++#if (__MAC_OS_X_VERSION_MAX_ALLOWED >= 270000) || (__IPHONE_OS_VERSION_MAX_ALLOWED >= 270000)
+ 		if (@available(macOS 27.0, iOS 27.0, *)) {
+ 			if ([MTLFXFrameInterpolatorDescriptor supportsDevice: _mtlDevice]) {
+ 				strlcat(supportedProps12.driverInfo, " " VK_MVK_METALFX_INTERPOLATION_DRIVER_INFO, VK_MAX_DRIVER_INFO_SIZE);
+ 			}
+ 		}
++#endif
+ 	}
+ 	supportedProps12.conformanceVersion = testedCTSVer;
+ 	// Apple GPUs always flush 32-bit denormals and preserve 16-bit ones (measured: arithmetic, conversion and
+@@ -4188,6 +4192,7 @@
+ // reads at each vertex. macOS 27.2 on an Apple M4 returns other values (the bits 1, 1 and 0 whatever the vertices
+ // hold), and pipelines then take PerVertexKHR inputs as their interpolated value at every vertex.
+ bool MVKPhysicalDevice::vertexValuesWork() const {
++#if MVK_XCODE_26
+ 	std::call_once(_vertexValuesOnce, [this]() {
+ 		if ( !_metalFeatures.shaderBarycentricCoordinates || _metalFeatures.mslVersion < SPIRV_CROSS_NAMESPACE::CompilerMSL::Options::make_msl_version(4) ) { return; }
+ 		if (@available(macOS 26.0, *)) {
+@@ -4242,6 +4247,7 @@
+ 			}
+ 		}
+ 	});
++#endif
+ 	return _vertexValuesWork;
+ }
+ 
+--- a/MoltenVK/MoltenVK/GPUObjects/MVKPipeline.mm
++++ b/MoltenVK/MoltenVK/GPUObjects/MVKPipeline.mm
+@@ -5415,8 +5415,13 @@
+ 	unique_lock<mutex> lock(_completionLock);
+ 
+ 	MVKDevice* mvkDev = getDevice();
+-	id<MTLBinaryArchive> archive = mvkDev->getBinaryArchive();
+-	if (archive) { mtlRPLDesc.binaryArchives = @[archive]; }
++	id<MTLBinaryArchive> archive = nil;
++#if MVK_XCODE_16
++	if (@available(macOS 15.0, iOS 18.0, *)) {
++		archive = mvkDev->getBinaryArchive();
++		if (archive) { mtlRPLDesc.binaryArchives = @[archive]; }
++	}
++#endif
+ 	compile(lock, ^{
+ 		auto mtlDev = getMTLDevice();
+ 		if (archive) {
+@@ -5435,11 +5440,13 @@
+ 			[mtlDev newRenderPipelineStateWithMeshDescriptor: mtlRPLDesc
+ 													 options: MTLPipelineOptionNone
+ 										   completionHandler: ^(id<MTLRenderPipelineState> ps, MTLRenderPipelineReflection*, NSError* error) {
++#if MVK_XCODE_16
+ 											   if (ps && archive) {
+ 												   mvkDev->addToBinaryArchive(^BOOL(id<MTLBinaryArchive> a, NSError** e) {
+ 													   return [a addMeshRenderPipelineFunctionsWithDescriptor: mtlRPLDesc error: e];
+ 												   });
+ 											   }
++#endif
+ 											   bool isLate = compileComplete(ps, error);
+ 											   if (isLate) { destroy(); }
+ 										   }];
+--- a/MoltenVK/MoltenVK/GPUObjects/MVKShaderModule.mm
++++ b/MoltenVK/MoltenVK/GPUObjects/MVKShaderModule.mm
+@@ -294,8 +294,13 @@
+ 			(uint64_t)opts.languageVersion,
+ 			(uint64_t)opts.preserveInvariance,
+ 			[opts respondsToSelector: @selector(optimizationLevel)] ? (uint64_t)opts.optimizationLevel : ~0ull,
++#if MVK_XCODE_16
+ 			[opts respondsToSelector: @selector(mathMode)] ? (uint64_t)opts.mathMode : (uint64_t)opts.fastMathEnabled,
+ 			[opts respondsToSelector: @selector(mathFloatingPointFunctions)] ? (uint64_t)opts.mathFloatingPointFunctions : ~0ull,
++#else
++			(uint64_t)opts.fastMathEnabled,
++			~0ull,
++#endif
+ 		};
+ 		hash = mvkHash(values, sizeof(values) / sizeof(values[0]), hash);
+ 		const char* name = getMTLDevice().name.UTF8String;
+--- a/MoltenVK/MoltenVK/Commands/MVKCmdPipeline.mm
++++ b/MoltenVK/MoltenVK/Commands/MVKCmdPipeline.mm
+@@ -324,6 +324,7 @@
+ // The frame between the last one interpolated and the color image, with MetalFX keeping the last frame itself
+ // (requiresPrevColorTexture, macOS 27). Ordered as the scales are, through the interpolator's fence.
+ void MVKCmdMetalFXScale::encodeFrameInterpolation(MVKCommandEncoder* cmdEncoder) {
++#if (__MAC_OS_X_VERSION_MAX_ALLOWED >= 270000) || (__IPHONE_OS_VERSION_MAX_ALLOWED >= 270000)
+ 	if (@available(macOS 27.0, iOS 27.0, *)) {
+ 		@autoreleasepool {
+ 			std::array<MTLPixelFormat, VK_METALFX_IMAGE_COUNT_MVK> formats;
+@@ -411,6 +412,7 @@
+ 			cmdEncoder->endCurrentMetalEncoding();
+ 		}
+ 	}
++#endif
+ }
+ 
+ void MVKCmdMetalFXScale::encode(MVKCommandEncoder* cmdEncoder) {
+@@ -476,10 +478,14 @@
+ 				desc.inputContentPropertiesEnabled = YES;
+ 				desc.inputContentMinScale = 1.0f;
+ 				desc.inputContentMaxScale = 3.0f;
++#if MVK_XCODE_16
+ 				if (@available(macOS 15.0, iOS 18.0, *)) { desc.requiresSynchronousInitialization = YES; }
++#endif
+ 				made = [desc newTemporalScalerWithDevice: mtlDevice];
+ 				[desc release];
+-			} else if (@available(macOS 26.0, iOS 26.0, *)) {
++			}
++#if MVK_XCODE_26
++			else if (@available(macOS 26.0, iOS 26.0, *)) {
+ 				MTLFXTemporalDenoisedScalerDescriptor* desc = [MTLFXTemporalDenoisedScalerDescriptor new];
+ 				desc.colorTextureFormat = formats[VK_METALFX_IMAGE_COLOR_MVK];
+ 				desc.depthTextureFormat = formats[VK_METALFX_IMAGE_DEPTH_MVK];
+@@ -502,6 +508,7 @@
+ 				made = [desc newTemporalDenoisedScalerWithDevice: mtlDevice];
+ 				[desc release];
+ 			}
++#endif
+ 			if (made) {
+ 				MVKLogInfo("MetalFX: %s upscaling %lux%lu to %lux%lu.", scalerType == VK_METALFX_SCALER_TYPE_TEMPORAL_MVK ? "temporal" : "denoised",
+ 						   (unsigned long)color.width, (unsigned long)color.height, (unsigned long)output.width, (unsigned long)output.height);
+@@ -555,7 +562,9 @@
+ 			temporal.jitterOffsetY = _info.jitterOffsetY;
+ 			temporal.preExposure = preExposure;
+ 			[temporal encodeToCommandBuffer: mtlCmdBuff];
+-		} else if (@available(macOS 26.0, iOS 26.0, *)) {
++		}
++#if MVK_XCODE_26
++		else if (@available(macOS 26.0, iOS 26.0, *)) {
+ 			id<MTLFXTemporalDenoisedScaler> denoiser = (id<MTLFXTemporalDenoisedScaler>)scaler;
+ 			simd_float4x4 worldToView, viewToClip;
+ 			memcpy(&worldToView, _info.worldToViewMatrix, sizeof(worldToView));
+@@ -582,6 +591,7 @@
+ 			denoiser.viewToClipMatrix = viewToClip;
+ 			[denoiser encodeToCommandBuffer: mtlCmdBuff];
+ 		}
++#endif
+ 		[mtlCmdBuff addCompletedHandler: ^(id<MTLCommandBuffer> mcb) { [scaler release]; }];
+ 
+ 		[cmdEncoder->getMTLComputeEncoder(kMVKCommandUseDispatch) waitForFence: fence];

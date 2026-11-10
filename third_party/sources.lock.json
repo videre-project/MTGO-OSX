@@ -1,0 +1,133 @@
+{
+  "m4": {
+    "url": "https://ftp.gnu.org/gnu/m4/m4-1.4.21.tar.xz",
+    "sha256": "f25c6ab51548a73a75558742fb031e0625d6485fe5f9155949d6486a2408ab66"
+  },
+  "bison": {
+    "url": "https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.xz",
+    "sha256": "9bba0214ccf7f1079c5d59210045227bcf619519840ebfa80cd3849cff5a5bf2"
+  },
+  "freetype": {
+    "url": "https://download.savannah.gnu.org/releases/freetype/freetype-2.15.0.tar.xz",
+    "sha256": "93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5"
+  },
+  "gnutls": {
+    "url": "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.13.tar.xz",
+    "sha256": "ffed8ec1bf09c2426d4f14aae377de4753b53e537d685e604e99a8b16ca9c97e"
+  },
+  "gmp": {
+    "url": "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz",
+    "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898"
+  },
+  "nettle": {
+    "url": "https://ftp.gnu.org/gnu/nettle/nettle-4.0.tar.gz",
+    "sha256": "3addbc00da01846b232fb3bc453538ea5468da43033f21bb345cb1e9073f5094"
+  },
+  "pkgconf": {
+    "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.10.tar.xz",
+    "sha256": "9371b2f6372da574d4c6dc96fe9b1463037bcf6afcb6671c1555afde7b17e2de"
+  },
+  "wine": {
+    "url": "https://codeload.github.com/AndreRH/wine/tar.gz/3ea3a14941b6a122b892c84141ce9662c008081e",
+    "sha256": "7dedbe9d9f207a0ba83d9598019e85971490f680a80a3a24449404f050d886d9",
+    "revision": "3ea3a14941b6a122b892c84141ce9662c008081e"
+  },
+  "llvm_mingw": {
+    "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-macos-universal.tar.xz",
+    "sha256": "66cbd5178c4a71b0d473e68ede172f8eb7d15d023e67f39201d0a69e21f6bf3c"
+  },
+  "sevenzip": {
+    "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-mac.tar.xz",
+    "sha256": "12ef6830317743cfd3f0ab1724bde43fcc270d8b6d8564f8c12c2a2b7f993570"
+  },
+  "dxvk": {
+    "url": "https://codeload.github.com/metalsharp/DXVK-MacOS/tar.gz/a7ed93c450a215fbd96f59d9f6129ef46b92de65",
+    "revision": "a7ed93c450a215fbd96f59d9f6129ef46b92de65",
+    "sha256": "4339c913411ce5b7acb49526a4d3325d08eb004ad999cc9bcef755275d5bc552"
+  },
+  "dxvk_vulkan": {
+    "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
+    "revision": "8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
+    "sha256": "35824117f649befc664a12622bc801eddbba036ac03d906db400ee1c1e7903e9"
+  },
+  "dxvk_spirv": {
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/tar.gz/04f10f650d514df88b76d25e83db360142c7b174",
+    "revision": "04f10f650d514df88b76d25e83db360142c7b174",
+    "sha256": "1b220e3eec1714f0451b0e3652979bd280edf10893f617837b88e6359a804ded"
+  },
+  "dxbc_spirv": {
+    "url": "https://codeload.github.com/doitsujin/dxbc-spirv/tar.gz/bf14419e5fa7eacb817b7b632f03cb61d61bbad7",
+    "revision": "bf14419e5fa7eacb817b7b632f03cb61d61bbad7",
+    "sha256": "7a2bd35d2a2186f5f77137c00302b0d9364ac01017e8ae41e30f61850d7cc2f4"
+  },
+  "display_info": {
+    "url": "https://codeload.github.com/doitsujin/libdisplay-info/tar.gz/275e6459c7ab1ddd4b125f28d0440716e4888078",
+    "revision": "275e6459c7ab1ddd4b125f28d0440716e4888078",
+    "sha256": "c83c3e600f90a3ac98932e9259de62ad8ad3a65dd5efb1d2abcb1e4d1c8f494a"
+  },
+  "moltenvk": {
+    "url": "https://codeload.github.com/KhronosGroup/MoltenVK/tar.gz/5189f8de86ec365860f63bf1da736815cfaea5cd",
+    "revision": "5189f8de86ec365860f63bf1da736815cfaea5cd",
+    "sha256": "430ebdd3df90aa398b78576b85a76a18d59da21c6b2d367be62d41f88c98da38"
+  },
+  "metal_patches": {
+    "url": "https://codeload.github.com/metalsharp/VKD3D-Proton-MacOS/tar.gz/54537b668dad054b0bcebe7525435c84a205f014",
+    "revision": "54537b668dad054b0bcebe7525435c84a205f014",
+    "sha256": "c6230e7706487a8de54c9bd0ea6a7f90ed2425e5152c0dabb2a6b47bbe42ff29"
+  },
+  "spirv_cross": {
+    "url": "https://codeload.github.com/dttdrv/SPIRV-Cross/tar.gz/c1af57390a0dd4950af578ec2135120ac218806f",
+    "revision": "c1af57390a0dd4950af578ec2135120ac218806f",
+    "sha256": "16bb466271120e6db9c90bef286832f4699fbb95d490b1da81d779946f352c0d"
+  },
+  "mvk_vulkan": {
+    "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/e3b1eec08173d6b825cd3ac88c885a63b621504a",
+    "revision": "e3b1eec08173d6b825cd3ac88c885a63b621504a",
+    "sha256": "f492279345cbc10708b64fcd432b3ff6c8246a5837c4db2b649abba00cf82208"
+  },
+  "cereal": {
+    "url": "https://codeload.github.com/USCiLab/cereal/tar.gz/a56bad8bbb770ee266e930c95d37fff2a5be7fea",
+    "revision": "a56bad8bbb770ee266e930c95d37fff2a5be7fea",
+    "sha256": "12e10fb541270632f6683286ce8c7e8c321fe4addb53fa91ed498b95c1758f93"
+  },
+  "dxbc_headers": {
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/tar.gz/c8ad050fcb29e42a2f57d9f59e97488f465c436d",
+    "revision": "c8ad050fcb29e42a2f57d9f59e97488f465c436d",
+    "sha256": "5b6f38b430f1c68c7395c570053403da14eb4cecc7fcb4040e7a5248c2f63874"
+  },
+  "glslang": {
+    "url": "https://codeload.github.com/KhronosGroup/glslang/tar.gz/8a85691a0740d390761a1008b4696f57facd02c4",
+    "revision": "8a85691a0740d390761a1008b4696f57facd02c4",
+    "sha256": "1d1497cfb763cdc80782a86ec269b053f3cae0e7cbef2278bf0eb1855ab0bfcb"
+  },
+  "meson": {
+    "url": "https://files.pythonhosted.org/packages/9c/07/b48592d325cb86682829f05216e4efb2dc881762b8f1bafb48b57442307a/meson-1.9.1-py3-none-any.whl",
+    "sha256": "f824ab770c041a202f532f69e114c971918ed2daff7ea56583d80642564598d0",
+    "version": "1.9.1"
+  },
+  "ninja": {
+    "url": "https://files.pythonhosted.org/packages/3c/74/d02409ed2aa865e051b7edda22ad416a39d81a84980f544f8de717cab133/ninja-1.13.0-py3-none-macosx_10_9_universal2.whl",
+    "sha256": "fa2a8bfc62e31b08f83127d1613d10821775a0eb334197154c4d6067b7068ff1",
+    "version": "1.13.0"
+  },
+  "cmake": {
+    "url": "https://files.pythonhosted.org/packages/99/3b/6ed408a99709808df4014bead522e075f0e8d1100e6d886eb5bc30fee04e/cmake-3.31.10-py3-none-macosx_10_10_universal2.whl",
+    "sha256": "ad697643a00d9ba85179590a383c4f7401169b55ebf4b8b2938daf28c6bdeb6d",
+    "version": "3.31.10"
+  },
+  "dmgbuild": {
+    "url": "https://files.pythonhosted.org/packages/48/4a/b16f1081f69592c6dba92baa4d3ca7a5685091a0f840f4b5e01be41aaf84/dmgbuild-1.6.5-py3-none-any.whl",
+    "sha256": "e19ab8c5e8238e6455d9ccb9175817be7fd62b9cdd1eef20f63dd88e0ec469ab",
+    "version": "1.6.5"
+  },
+  "ds_store": {
+    "url": "https://files.pythonhosted.org/packages/47/bf/b1c10362a0d670ee8ae086d92c3ab795fca2a927e4ff25e7cd15224d3863/ds_store-1.3.1-py3-none-any.whl",
+    "sha256": "fbacbb0bd5193ab3e66e5a47fff63619f15e374ffbec8ae29744251a6c8f05b5",
+    "version": "1.3.1"
+  },
+  "mac_alias": {
+    "url": "https://files.pythonhosted.org/packages/39/a1/4136777ed6a56df83e7c748ad28892f0672cbbcdc3b3d15a57df6ba72443/mac_alias-2.2.2-py3-none-any.whl",
+    "sha256": "504ab8ac546f35bbd75ad014d6ad977c426660aa721f2cd3acf3dc2f664141bd",
+    "version": "2.2.2"
+  }
+}

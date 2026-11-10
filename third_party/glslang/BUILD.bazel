@@ -1,0 +1,14 @@
+load("//third_party:native.bzl", "native_build")
+
+package(default_visibility = ["//visibility:public"])
+
+native_build(
+    name = "glslang",
+    kind = "cmake",
+    source = "@mtgo_glslang//:source",
+    tools = {"//third_party/build_tools:build_tools": "build_tools"},
+    cmake_options = ["-DENABLE_OPT=OFF", "-DENABLE_HLSL=OFF", "-DGLSLANG_TESTS=OFF", "-DBUILD_TESTING=OFF"],
+    target = "glslang-standalone",
+    artifact = "StandAlone/glslang",
+    artifact_name = "bin/glslang",
+)

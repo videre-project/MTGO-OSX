@@ -1,0 +1,25 @@
+load("//third_party:native.bzl", "native_library")
+
+native_library(
+    name = "moltenvk",
+    kind = "cmake",
+    source = "@mtgo_moltenvk//:source",
+    sources = {
+        "@mtgo_spirv_cross//:source": "External/SPIRV-Cross",
+        "@mtgo_mvk_vulkan//:source": "External/Vulkan-Headers",
+        "@mtgo_cereal//:source": "External/cereal",
+        "@mtgo_metal_patches//:source": "_patches",
+    },
+    source_patches = [
+        "_patches/patches/moltenvk/metalsharp-vkmt.diff=.",
+        "_patches/patches/spirv-cross/metalsharp.diff=External/SPIRV-Cross",
+    ],
+    patches = ["patches/moltenvk-sdk14.patch"],
+    tools = {"//third_party/build_tools:build_tools": "build_tools"},
+    cmake_project = "CMakeLists.txt",
+    target = "MoltenVK",
+    artifact = "moltenvk/MoltenVK/libMoltenVK.dylib",
+    artifact_name = "lib/libMoltenVK.dylib",
+    library = True,
+    visibility = ["//visibility:public"],
+)

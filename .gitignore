@@ -1,0 +1,7 @@
+/bazel-*
+/dist/
+.DS_Store
+__pycache__/
+**/bin/
+**/obj/
+.env

@@ -1,0 +1,12 @@
+load("//third_party:native.bzl", "native_library")
+
+package(default_visibility = ["//visibility:public"])
+
+native_library(
+    name = "freetype",
+    kind = "autotools",
+    source = "@mtgo_freetype//:source",
+    tools = {"//third_party/pkgconf:pkgconf": "pkgconf"},
+    configure_options = ["--disable-static", "--without-harfbuzz", "--without-png", "--without-brotli", "--without-bzip2"],
+    library = True,
+)

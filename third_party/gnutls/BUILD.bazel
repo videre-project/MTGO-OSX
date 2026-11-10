@@ -1,0 +1,19 @@
+load("//third_party:native.bzl", "native_library")
+
+package(default_visibility = ["//visibility:public"])
+
+native_library(
+    name = "gnutls",
+    kind = "autotools",
+    source = "@mtgo_gnutls//:source",
+    deps = ["//third_party/nettle:nettle"],
+    tools = {"//third_party/pkgconf:pkgconf": "pkgconf"},
+    cflags = "-std=gnu2x",
+    configure_options = [
+        "--disable-static", "--enable-shared", "--disable-doc", "--disable-tools",
+        "--disable-tests", "--disable-cxx", "--disable-guile", "--without-p11-kit",
+        "--with-included-libtasn1", "--with-included-unistring", "--without-brotli",
+        "--without-zstd", "--without-tpm",
+    ],
+    library = True,
+)

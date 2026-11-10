@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+
+project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+version=$(cat "$project_dir/.bazelversion")
+if [[ "$(uname -s)-$(uname -m)" != Darwin-arm64 ]]; then
+    echo 'This project currently targets an Apple Silicon macOS build host.' >&2
+    exit 1
+fi
+name="bazel-$version-darwin-arm64"
+expected=$(awk -v name="$name" '$2 == name {print $1}' "$project_dir/tools/bazel.sha256")
+if [[ -z "$expected" ]]; then
+    echo "No pinned checksum for $name; update tools/bazel.sha256 with .bazelversion." >&2
+    exit 1
+fi
+cache="${XDG_CACHE_HOME:-$HOME/Library/Caches}/MTGO-OSX"
+binary="$cache/$name"
+mkdir -p "$cache"
+if [[ ! -x "$binary" ]]; then
+    download=$(mktemp "$cache/download.XXXXXX")
+    trap 'rm -f "$download"' EXIT
+    curl --fail --location --retry 3 --proto '=https' \
+        "https://github.com/bazelbuild/bazel/releases/download/$version/$name" -o "$download"
+    printf '%s  %s\n' "$expected" "$download" | shasum -a 256 -c -
+    chmod 755 "$download"
+    mv "$download" "$binary"
+    trap - EXIT
+fi
+cd "$project_dir"
+exec "$binary" "$@"

@@ -1,0 +1,12 @@
+load("//third_party:native.bzl", "native_library")
+
+package(default_visibility = ["//visibility:public"])
+
+native_library(
+    name = "gmp",
+    kind = "autotools",
+    source = "@mtgo_gmp//:source",
+    tools = {"//third_party/m4:m4": "m4"},
+    configure_options = ["--disable-static", "--enable-shared"],
+    library = True,
+)

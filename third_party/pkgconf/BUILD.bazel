@@ -1,0 +1,10 @@
+load("//third_party:native.bzl", "native_build")
+
+package(default_visibility = ["//visibility:public"])
+
+native_build(
+    name = "pkgconf",
+    kind = "autotools",
+    source = "@mtgo_pkgconf//:source",
+    configure_options = ["--disable-shared"],
+)

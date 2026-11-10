@@ -1,0 +1,11 @@
+load("//third_party:native.bzl", "native_build")
+
+package(default_visibility = ["//visibility:public"])
+
+native_build(
+    name = "bison",
+    kind = "autotools",
+    source = "@mtgo_bison//:source",
+    configure_options = ["--enable-relocatable", "M4=m4"],
+    tools = {"//third_party/m4:m4": "m4"},
+)

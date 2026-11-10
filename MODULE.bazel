@@ -1,0 +1,37 @@
+module(name = "mtgo_osx", version = "0.1.0")
+
+macos_sdk = use_repo_rule("//tools:macos_sdk.bzl", "macos_sdk")
+macos_sdk(name = "macos_sdk")
+
+sources = use_extension("//third_party:repositories.bzl", "sources")
+use_repo(
+    sources,
+    "mtgo_m4",
+    "mtgo_bison",
+    "mtgo_freetype",
+    "mtgo_gnutls",
+    "mtgo_gmp",
+    "mtgo_nettle",
+    "mtgo_pkgconf",
+    "mtgo_wine",
+    "mtgo_llvm_mingw",
+    "mtgo_sevenzip",
+    "mtgo_dxvk",
+    "mtgo_dxvk_vulkan",
+    "mtgo_dxvk_spirv",
+    "mtgo_dxbc_spirv",
+    "mtgo_display_info",
+    "mtgo_moltenvk",
+    "mtgo_metal_patches",
+    "mtgo_spirv_cross",
+    "mtgo_mvk_vulkan",
+    "mtgo_cereal",
+    "mtgo_dxbc_headers",
+    "mtgo_glslang",
+    "mtgo_meson",
+    "mtgo_ninja",
+    "mtgo_cmake",
+    "mtgo_dmgbuild",
+    "mtgo_ds_store",
+    "mtgo_mac_alias",
+)

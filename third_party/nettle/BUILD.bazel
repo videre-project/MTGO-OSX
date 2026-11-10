@@ -1,0 +1,13 @@
+load("//third_party:native.bzl", "native_library")
+
+package(default_visibility = ["//visibility:public"])
+
+native_library(
+    name = "nettle",
+    kind = "autotools",
+    source = "@mtgo_nettle//:source",
+    deps = ["//third_party/gmp:gmp"],
+    tools = {"//third_party/m4:m4": "m4", "//third_party/pkgconf:pkgconf": "pkgconf"},
+    configure_options = ["--disable-static", "--enable-shared", "--disable-documentation", "--disable-openssl"],
+    library = True,
+)
