@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "dockProtocolVersion": 5,
+  "architecture": "arm64",
+  "wine": "MTGO.app/Contents/Resources/bin/wine",
+  "wineserver": "MTGO.app/Contents/Resources/bin/wineserver",
+  "macDriver": "MTGO.app/Contents/Resources/lib/wine/aarch64-unix/winemac.so",
+  "windowsRuntime": "MTGO.app/Contents/Resources/lib/wine/aarch64-windows/ntdll.dll",
+  "minimumMacOSVersion": "13.0",
+  "wineLoader": "MTGO.app/Contents/MacOS/wine"
+}

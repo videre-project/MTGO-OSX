@@ -1,1 +1,6 @@
 exports_files(["LICENSE", "NOTICE"])
+
+alias(name = "MTGO", actual = "//src:MTGO")
+alias(name = "runtime_arm64", actual = "//src:runtime_arm64")
+alias(name = "runtime_x86_64", actual = "//src:runtime_x86_64")
+alias(name = "MTGO_opengl", actual = "//src:MTGO_opengl", tags = ["manual"])

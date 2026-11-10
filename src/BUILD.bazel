@@ -1,0 +1,151 @@
+load("//tools:macos.bzl", "macos_application", "runtime_archive", "runtime_bundle", "runtime_catalog")
+
+RUNTIME_VERSION = "0.1.0"
+RUNTIME_RELEASE_URL = "https://github.com/videre-project/MTGO-OSX/releases/download/runtime-v" + RUNTIME_VERSION
+
+exports_files(["Resources/MTGO-Background.jpg", "Resources/Fonts/Inter.ttf"])
+
+filegroup(
+    name = "dock_sources",
+    srcs = glob(["Dock/*.swift"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+filegroup(
+    name = "branding",
+    srcs = [":game_icon", "Resources/MTGO.ico", "Resources/MTGO-Background.jpg", "Resources/Fonts/Inter.ttf", "Resources/Fonts/OFL.txt"],
+)
+
+genrule(
+    name = "game_icon",
+    srcs = ["Resources/MTGO.ico"],
+    outs = ["Resources/GameIcon.icns"],
+    tools = ["//tools:icons"],
+    cmd = '"$(location //tools:icons)" "$(location Resources/MTGO.ico)" "$@"',
+    tags = ["requires-darwin", "no-remote"],
+)
+
+filegroup(
+    name = "sources",
+    srcs = glob(["**/*.swift"]),
+)
+
+filegroup(
+    name = "application_components",
+    srcs = glob(["**/*.swift"], exclude = ["Application.swift"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+filegroup(
+    name = "preparation_sources",
+    srcs = [
+        "ApplicationError.swift",
+        "Launcher/StartupProgress.swift",
+        "Runtime/Framework/FrameworkComponents.swift",
+        "Runtime/RuntimeArchitecture.swift",
+        "Runtime/Wine/WineRegistry.swift",
+        "Runtime/Wine/WineUserData.swift",
+    ],
+    visibility = ["//tests:__pkg__"],
+)
+
+macos_application(
+    name = "MTGO",
+    srcs = [":sources"],
+    infoplist = "Info.plist",
+    branding = ":branding",
+    runtime_catalog = ":runtime_catalog",
+    launcher_files = "//third_party/mtgosdk:launcher",
+    visibility = ["//visibility:public"],
+)
+
+macos_application(
+    name = "MTGO_opengl",
+    srcs = [":sources"],
+    infoplist = "Info.plist",
+    branding = ":branding",
+    runtime_files = ":runtime_opengl",
+    runtime_catalog = ":runtime_catalog",
+    launcher_files = "//third_party/mtgosdk:launcher",
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+runtime_bundle(
+    name = "runtime",
+    wine = "//third_party/wine:wine",
+    sevenzip = "//third_party/sevenzip:sevenzip",
+    d3d9 = "//third_party/dxvk:d3d9",
+    manifest = "Runtime/Wine/runtime.json",
+    infoplist = "Runtime/Wine/Wine.plist",
+    icon = ":game_icon",
+    visibility = ["//tests:__pkg__"],
+)
+
+runtime_bundle(
+    name = "runtime_opengl",
+    wine = "//third_party/wine:wine",
+    sevenzip = "//third_party/sevenzip:sevenzip",
+    manifest = "Runtime/Wine/runtime-opengl.json",
+    infoplist = "Runtime/Wine/Wine.plist",
+    icon = ":game_icon",
+    tags = ["manual"],
+)
+
+# Generate the archives and catalog together so the app pins the exact files
+# uploaded under runtime-v<version>.
+runtime_archive(
+    name = "runtime_arm64",
+    runtime = ":runtime",
+    version = RUNTIME_VERSION,
+    architecture = "arm64",
+    release_url = RUNTIME_RELEASE_URL,
+    visibility = ["//visibility:public"],
+)
+
+runtime_catalog(
+    name = "runtime_catalog",
+    packages = [":runtime_arm64", ":runtime_x86_64"],
+    visibility = ["//visibility:public"],
+)
+
+runtime_bundle(
+    name = "runtime_intel",
+    architecture = "x86_64",
+    wine = "//third_party/wine:wine_x86_64",
+    sevenzip = "//third_party/sevenzip:sevenzip",
+    d3d9 = "//third_party/dxvk:d3d9_x86_64",
+    manifest = "Runtime/Wine/runtime-x86_64.json",
+    infoplist = "Runtime/Wine/Wine.plist",
+    icon = ":game_icon",
+    visibility = ["//tests:__pkg__"],
+)
+
+runtime_archive(
+    name = "runtime_x86_64",
+    runtime = ":runtime_intel",
+    version = RUNTIME_VERSION,
+    architecture = "x86_64",
+    release_url = RUNTIME_RELEASE_URL,
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "intel_catalog",
+    srcs = [":runtime_x86_64"],
+    output_group = "catalog",
+)
+
+# An Intel-only test bundle lets Apple Silicon exercise the same app under Rosetta.
+macos_application(
+    name = "MTGO_intel",
+    srcs = [":sources"],
+    architectures = ["x86_64"],
+    allow_rosetta = True,
+    infoplist = "Info.plist",
+    branding = ":branding",
+    runtime_catalog = ":intel_catalog",
+    launcher_files = "//third_party/mtgosdk:launcher",
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)

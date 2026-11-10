@@ -1,1 +1,9 @@
+load("//tools:macos.bzl", "macos_tool")
+
 exports_files(["build_native.py", "copy_tree.py"] + glob(["*.bzl"]))
+
+macos_tool(
+    name = "icons",
+    srcs = ["icons.swift"],
+    visibility = ["//src:__pkg__"],
+)

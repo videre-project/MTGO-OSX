@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "dockProtocolVersion": 5,
+  "architecture": "x86_64",
+  "wine": "MTGO.app/Contents/Resources/bin/wine",
+  "wineserver": "MTGO.app/Contents/Resources/bin/wineserver",
+  "macDriver": "MTGO.app/Contents/Resources/lib/wine/x86_64-unix/winemac.so",
+  "windowsRuntime": "MTGO.app/Contents/Resources/lib/wine/x86_64-windows/ntdll.dll",
+  "minimumMacOSVersion": "13.0",
+  "direct3D9": "MTGO.app/Contents/Resources/lib/dxvk/d3d9.dll",
+  "vulkanLibrary": "MTGO.app/Contents/Resources/lib/libMoltenVK.dylib",
+  "wineLoader": "MTGO.app/Contents/MacOS/wine"
+}
