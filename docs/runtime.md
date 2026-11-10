@@ -1,8 +1,8 @@
 # Runtime Architecture
 
-MTGO runs as a Windows process under Wine, with a SwiftUI and AppKit launcher for installation and macOS integration. Wine creates game windows through its Mac driver while menus and a shared Dock entry remain available through the native launcher. This allows the setup window to give way to MTGO without changing the app represented in the Dock.
+MTGO runs as a Windows process under Wine, with a native SwiftUI and AppKit launcher for installation and macOS integration. Wine creates game windows through its Mac driver while the launcher provides macOS menus, settings and a shared Dock entry. These remain available after the startup window closes.
 
-A matching .NET Framework 4.8.1 installation runs ARM64 code on Apple silicon or x86_64 code on Intel Macs. With hardware rendering enabled, Windows Presentation Foundation (WPF) uses Direct3D 9/9Ex through DXVK and MoltenVK to render with Metal. Wine uses the Mac driver directly, without XQuartz or a VNC display.
+Wine, .NET Framework 4.8.1 and MTGO run as ARM64 processes on Apple silicon and x86_64 processes on Intel Macs. Windows Presentation Foundation (WPF) renders MTGO through Direct3D 9/9Ex; with hardware rendering enabled, DXVK translates those calls to Vulkan and MoltenVK translates Vulkan to Metal. Game windows use Wine's Mac driver directly, without XQuartz or VNC.
 
 ## Runtime Installation
 
@@ -98,11 +98,13 @@ Locks apply per prefix, allowing separate prefixes to run independently. The loc
 
 ## Runtime Builds
 
-Wine and DXVK are separate Bazel targets. Wine is built against GnuTLS, FreeType and MoltenVK; DXVK uses glslang and a Windows cross compiler. Since DXVK is not an input to the Wine target, changing it does not rebuild Wine. MTGO-OSX's default Metal app and an optional `MTGO_opengl` comparison app use the same Wine build.
+Wine is built against GnuTLS, FreeType and MoltenVK. DXVK D3D9 is downloaded from MetalSharp's published `v3.1.1-macos.3` packages, with ARM64X code for the ARM64 runtime and an Intel DLL for x86_64. Package hashes, source revision and license notices are retained. Updating DXVK repackages a runtime without rebuilding Wine; the default Metal app and an optional `MTGO_opengl` comparison app continue to share one Wine build.
 
-[`third_party/sources.lock.json`](../third_party/sources.lock.json) records source URLs, revisions and SHA-256 hashes. Each dependency's `BUILD.bazel` declares its build options and patches. Configure, CMake or Meson build the upstream source, with scheduling and caching managed through Bazel.
+[`third_party/sources.lock.json`](../third_party/sources.lock.json) records URLs, revisions and SHA-256 hashes for source archives and published binaries. Each dependency's `BUILD.bazel` declares build options or selected binary files. Configure and CMake build the remaining upstream sources, with scheduling and caching managed through Bazel.
 
-`native_library` generates ARM64 and x86_64 variants from shared recipes and build tools. On Apple silicon, Intel builds run through Rosetta with explicit x86_64 compiler and CMake flags. Native executable headers are checked against the requested architecture. DXVK uses an upstream win64 cross file for Intel and an ARM64X cross file with additional validation for ARM64.
+`native_library` generates ARM64 and x86_64 variants from shared recipes. macOS builds currently use Rosetta for Intel recipes. Linux builds use native host executables and an OSXCross toolchain targeting macOS; Wine's resource and font tools are built for Linux with host FreeType and NLS locale data before building the macOS binaries. GnuTLS and FreeType use target-specific Darwin binutils and pkg-config directories to avoid linking against Linux libraries.
+
+The Linux toolchain fingerprint includes Clang, host build-utility and FreeType versions, OSXCross configuration, SDK settings and the Darwin compiler-runtime hash. Native executable headers are checked against the requested architecture after library paths are normalized. Linux outputs remain unsigned until macOS packaging. `native_archive` produces transferable Wine archives as cached Bazel outputs, retaining library and license files. With `MTGO_NATIVE_ARTIFACTS` set, macOS builds import those archives and check and sign each native executable before bundling. See [Linux Runtime Builds](../README.md#linux-runtime-builds) for local commands and [CI and Incremental Builds](../README.md#ci-and-incremental-builds) for job and cache behavior.
 
 ### Packaging
 
@@ -110,7 +112,9 @@ Packaging rewrites native library paths and copies files referenced by Bazel's a
 
 Packaging preserves the modification time of `wine.inf`, which Wine uses to decide whether a prefix needs updating. Rebuilding only the launcher can therefore reuse a prefix without triggering an update from a changed timestamp.
 
-Wine modules in Portable Executable (PE) format use 16 KB file alignment and 64 KB section alignment on ARM64. Common Object File Format (COFF) symbol tables are removed from packaged modules to reduce size, while those symbols remain available in Wine build outputs for diagnostics. The `runtime_archive` rule then creates each compressed archive and a matching catalog entry while preserving relative links and timestamps.
+Wine modules in Portable Executable (PE) format use 16 KB file alignment and 64 KB section alignment on ARM64. Common Object File Format (COFF) symbol tables are removed from packaged modules to reduce size, while those symbols remain available in Wine build outputs for diagnostics.
+
+Signed runtime bundles are archived before Bazel caches directory outputs, preserving relative links and modification times across cache restoration. Release packaging copies these archives unchanged to versioned filenames and records SHA-256 checksums in catalog entries.
 
 ### ARM64 Compatibility
 

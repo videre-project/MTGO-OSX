@@ -1,22 +1,28 @@
 # MTGO-OSX
 
-MTGO-OSX runs Magic: The Gathering Online on macOS through Wine, with a native SwiftUI and AppKit launcher for installation, updates and startup. Distributed as a universal app, MTGO-OSX downloads a matching ARM64 or x86_64 runtime so Wine, .NET Framework 4.8.1 and MTGO run in the native architecture. Direct3D 9 rendering uses DXVK and MoltenVK to translate calls to Metal.
+**MTGO-OSX** is a native macOS launcher for installing and running **Magic: The Gathering Online (MTGO)**. It manages installation and updates with a custom ClickOnce launcher, and provides native macOS menus, graphics and macOS drivers, dock entries, and settings for MTGO.
+
+MTGO runs under Wine with .NET Framework 4.8.1 natively on both Intel and Apple Silicon Macs with full CPU and GPU hardware acceleration. MTGO-OSX is distributed as a universal app that downloads Wine and graphics libraries during setup.
 
 ## Build and Run
 
-Builds require an Apple silicon Mac with Apple's Command Line Tools or Xcode, the .NET 10 SDK and Rosetta. A universal build generates both runtime archives to record their hashes in the app, so it also builds Intel dependencies through Rosetta. Bazel is pinned in `.bazelversion`.
+To build MTGO-OSX, we recommend an Apple silicon Mac with Apple's Command Line Tools or Xcode, .NET 10 SDK and Rosetta installed. Bazel builds a universal app and separate Wine runtimes for ARM64 and x86_64, then records runtime download URLs and hashes in the app. Local Intel source builds use Rosetta; [Linux Runtime Builds](#linux-runtime-builds) explains how to compile both runtimes with Docker instead as we use in GitHub Actions CI.
 
-Compilation targets macOS 13. The oldest supported runtime OS still needs to be established through integration testing; see [macOS Compatibility](docs/runtime.md#macos-compatibility).
+MTGO-OSX requires macOS 13 (Ventura) or later; see [macOS Compatibility](docs/runtime.md#macos-compatibility).
 
 ```sh
-./bazelw build //:MTGO //:dmg
-MTGO_RUNTIME_ROOT="$PWD/bazel-bin/src/runtime" ./bazelw run //:MTGO
+./bazelw build //:MTGO //:dmg //:runtime_arm64
+runtime_dir="$(mktemp -d)"
+tar -xJf bazel-bin/src/runtime-0.1.0-macos-arm64.tar.xz -C "$runtime_dir"
+MTGO_RUNTIME_ROOT="$runtime_dir" ./bazelw run //:MTGO
 ./bazelw test //tests:mtgo_startup
 ```
 
-Build outputs include `bazel-bin/src/MTGO.app` and `bazel-bin/dmg.dmg`. The app bundles a universal native launcher, the MTGOSDK ClickOnce launcher and branding, with Wine and graphics libraries downloaded separately. The development command above uses a locally built runtime, while integration tests serve an archive locally. Both work before GitHub release assets are published.
+Bazel writes `bazel-bin/src/MTGO.app` and `bazel-bin/dmg.dmg`. MTGO-OSX includes a ClickOnce launcher from MTGOSDK for installing and activating MTGO. Wine and graphics libraries are packaged separately for download during setup.
 
-Runtime archives are built by `//:runtime_arm64` and `//:runtime_x86_64` at `bazel-bin/src/runtime-0.1.0-macos-<architecture>.tar.xz`. A `Contents/Resources/RuntimePackages.json` catalog in the app records their release URLs and SHA-256 hashes. Publish matching runtime assets before distributing the DMG, as described under [Releases](#releases).
+For local development, `MTGO_RUNTIME_ROOT` selects a runtime extracted from a release archive, as shown above. Extracting an archive preserves Wine’s relative symlinks across Bazel cache restoration. Integration tests download runtime archives from a local HTTP server, so development and testing can proceed before publishing GitHub release assets.
+
+Build `//:runtime_arm64` and `//:runtime_x86_64` to produce `bazel-bin/src/runtime-0.1.0-macos-<architecture>.tar.xz`. During app packaging, Bazel writes download URLs and SHA-256 hashes for these archives to `Contents/Resources/RuntimePackages.json`. Publish those runtime assets before distributing a DMG that references them; see [Releases](#releases).
 
 The DMG opens in Finder with MTGO and an Applications shortcut over a Retina background matching the launcher. Artwork and Finder metadata are generated from pinned `dmgbuild` dependencies without Finder automation. Builds are ad-hoc signed; distribution signing and notarization remain separate release work.
 
@@ -49,11 +55,13 @@ src/
     BinaryArchitecture.swift            Executable header inspection
   Resources/                            Shared icons, artwork and fonts
 tests/                                  Real-client integration and native behavior tests
-third_party/<dependency>/               Dependency build recipe and local patches
+third_party/<dependency>/               Bazel definitions and upstream patches
 tools/                                  Bazel rules, packaging and asset generation
 ```
 
-Dependency recipes are organized by library under `third_party/`, with shared build rules in `third_party/native.bzl` and archive versions and hashes in `third_party/sources.lock.json`. MTGOSDK is pinned separately in `MODULE.bazel` as a NuGet package. Packaging extracts the published ClickOnce launcher and its dependency unchanged, keeping downloaded packages and compiled binaries outside source control.
+Build definitions for Wine, graphics libraries and packaging tools are organized under `third_party/`, alongside any patches applied to upstream sources. These definitions use downloads pinned in [`third_party/sources.lock.json`](third_party/sources.lock.json), which records archive URLs and SHA-256 hashes. Bazel either compiles source code through shared rules in [`third_party/native.bzl`](third_party/native.bzl) or packages binaries from an upstream release.
+
+The ClickOnce launcher comes from a published MTGOSDK NuGet package, pinned by version and SHA-256 hash in [`MODULE.bazel`](MODULE.bazel). During a build, Bazel runs [ExtractLauncher.cs](third_party/mtgosdk/ExtractLauncher.cs) to copy `Launcher.exe` from `MTGOSDK.dll` and `System.Deployment.dll` from the launcher's embedded resources. MTGO-OSX bundles both files unchanged for ClickOnce installation, updates and activation.
 
 ### Where to Make Changes
 
@@ -78,14 +86,57 @@ Dependency recipes are organized by library under `third_party/`, with shared bu
 | Dock activation, window notifications and attention | [DockController.swift](src/Dock/DockController.swift), [DockAttentionView.swift](src/Dock/DockAttentionView.swift) |
 | Wine's Mac driver and compatibility fixes | [third_party/wine](third_party/wine) |
 | D3D9 and Metal translation | [third_party/dxvk](third_party/dxvk), [third_party/moltenvk](third_party/moltenvk) |
-| App contents, signatures and runtime packaging | [macos.bzl](tools/macos.bzl) |
+| App contents, signatures and runtime packaging | [macos.bzl](tools/macos.bzl), [sign_runtime.py](tools/sign_runtime.py) |
+| Linux build jobs and incremental caches | [build.yml](.github/workflows/build.yml), [Dockerfile](tools/linux/Dockerfile) |
+| Imported Wine archives | [native_artifacts.bzl](tools/native_artifacts.bzl), [native.bzl](third_party/native.bzl) |
 | DMG artwork and Finder layout | [dmg.swift](tools/dmg.swift), [dmg.py](tools/dmg.py) |
 
-Application and runtime changes can be built separately. DXVK and Wine share a Windows cross compiler, but DXVK is not a Wine build dependency, so graphics backend changes do not require rebuilding Wine. MTGO-OSX's default Metal app and an optional OpenGL comparison app also use the same Wine build, allowing both rendering paths to be tested with the same compatibility patches.
+Application and runtime changes can be built separately. DXVK D3D9 binaries are downloaded from a pinned MetalSharp release, with ARM64X and Intel packages selected for the corresponding runtime. Updating DXVK repackages the runtime without rebuilding Wine. MTGO-OSX's default Metal app and an optional OpenGL comparison app use the same Wine build, allowing both rendering paths to be tested with the same compatibility patches.
+
+### Linux Runtime Builds
+
+The [Linux build image](tools/linux/Dockerfile) includes Clang, OSXCross and build utilities for compiling ARM64 and x86_64 macOS binaries. Building this image also requires a macOS SDK and Darwin compiler runtime from Apple developer tools, supplied through named Docker build contexts. OSXCross uses ld64 to link GMP's optimized Intel assembly, which contains relocations unsupported by LLVM's Mach-O linker.
+
+Create a builder with explicit CPU and memory limits, and finish building the image before compiling Wine. The commands below use limits suitable for a Docker VM with 4 GB of RAM. Bazel action scheduling and compiler parallelism are configured separately.
+
+```sh
+docker buildx create --name mtgo-osx-cross --driver docker-container \
+  --driver-opt memory=2g --driver-opt cpu-period=100000 --driver-opt cpu-quota=200000
+docker buildx build --builder mtgo-osx-cross --load -t mtgo-osx-cross \
+  --build-context macos_sdk="$(xcrun --sdk macosx --show-sdk-path)" \
+  --build-context compiler_rt="$(xcrun clang -print-resource-dir)/lib/darwin" \
+  tools/linux
+docker buildx stop mtgo-osx-cross
+```
+
+To build both Wine architectures, mount this repository read-only and use a named volume for downloads and build outputs. One Bazel action runs at a time, with two compiler jobs. Unsigned Wine archives are copied back to macOS after compilation finishes.
+
+```sh
+docker volume create mtgo-osx-cross-build
+docker run --name mtgo-osx-runtime-build --cpus=2 --memory=2304m --memory-swap=2304m \
+  --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+  --mount type=volume,source=mtgo-osx-cross-build,target=/build \
+  mtgo-osx-cross ./bazelw --output_user_root=/build/bazel --host_jvm_args=-Xmx512m build \
+  //third_party/wine:archive_arm64 //third_party/wine:archive_x86_64 \
+  --jobs=1 --define=native_jobs=2 --symlink_prefix=/build/links/ --lockfile_mode=off
+mkdir -p dist/linux
+docker cp mtgo-osx-runtime-build:/build/links/bin/third_party/wine/wine-arm64.tar.gz dist/linux/
+docker cp mtgo-osx-runtime-build:/build/links/bin/third_party/wine/wine-x86_64.tar.gz dist/linux/
+docker rm mtgo-osx-runtime-build
+```
+
+Each archive includes Wine, libraries compiled for the same architecture, and license notices. To package these builds on macOS, set `MTGO_NATIVE_ARTIFACTS` to an absolute directory containing both archives:
+
+```sh
+MTGO_NATIVE_ARTIFACTS="$PWD/dist/linux" ./bazelw build //:MTGO //:dmg //:runtime_arm64 //:runtime_x86_64
+MTGO_NATIVE_ARTIFACTS="$PWD/dist/linux" ./bazelw test //tests:mtgo_startup
+```
+
+Bazel imports the archives instead of scheduling Wine or dependency compilation. Packaging verifies each Mach-O architecture and signs the native binaries before creating the release archives and app. Without `MTGO_NATIVE_ARTIFACTS`, local builds continue to compile Wine from source.
 
 ## Launch Flow
 
-On first launch, MTGO-OSX downloads a native runtime from the bundled catalog and verifies the archive hash, binary architecture, Dock protocol and helper app signature before installation. Later launches reuse that installation without contacting GitHub. Runtime releases are versioned separately from the MTGO client.
+On first launch, MTGO-OSX downloads a Wine runtime using a URL and SHA-256 hash recorded in `RuntimePackages.json`. Before installation, validation also checks binary architectures, Dock protocol compatibility and the helper app signature. Later launches reuse that installation without contacting GitHub. Runtime releases are versioned separately from the MTGO client.
 
 Windows files, registry data and installed applications are stored in a separate directory called a Wine prefix. Setup prepares this prefix with architecture-matched .NET Framework files downloaded from Microsoft, then uses the Native Image Generator (`ngen.exe`) to compile Framework assemblies before starting MTGO. This preparation is reused on later launches.
 
@@ -99,7 +150,7 @@ MTGO's original splash screen is hidden during startup. ClickOnce shortcuts stay
 
 Hardware rendering is the default. Software rendering is available in Settings; foil treatments and other Shader Model 3 effects require hardware rendering. The optional OpenGL comparison app is `//:MTGO_opengl`.
 
-Runtime downloads are installed under `~/Library/Application Support/MTGO-OSX/Runtimes/<version>/<architecture>`. New prefixes use `~/Library/Application Support/MTGO-OSX/Prefixes/<architecture>`; existing ARM64 installations under `Prefix` are retained. Package downloads are cached in `~/Library/Caches/MTGO-OSX/Packages`.
+MTGO-OSX installs Wine runtimes under `~/Library/Application Support/MTGO-OSX/Runtimes/<version>/<architecture>` and creates Wine prefixes under `~/Library/Application Support/MTGO-OSX/Prefixes/<architecture>`. Existing ARM64 installations under `Prefix` are retained. Verified downloads are cached in `~/Library/Caches/MTGO-OSX/Packages`.
 
 For diagnostics, choose **MTGO → Show Session Log** or use the document button in the launcher. Logs are stored under `~/Library/Application Support/MTGO-OSX/Logs`. See [Runtime Architecture](docs/runtime.md) for validation, Framework setup and session handling.
 
@@ -109,7 +160,7 @@ Open **MTGO → Settings…** to change appearance, attention behavior and runti
 
 Custom images are copied to `~/Library/Application Support/MTGO-OSX/Icons`, so moving or deleting the original image does not affect the selection. The running Dock icon changes immediately; MTGO windows use it after restarting. Reset restores the bundled MTGO icon. Finder retains the installed app icon because customization does not modify the signed bundle.
 
-Runtime shows the release version, native architecture, rendering selection and storage use. Runtime and Wine-prefix folder overrides are under Advanced. Changes that affect an active Wine session show a restart option; native preferences apply immediately.
+**Runtime** settings show which runtime release, processor architecture and rendering mode are in use, along with storage totals. **Advanced** provides overrides for runtime and Wine-prefix folders. When a change affects an active Wine session, Settings offers a restart option. Native preferences apply immediately.
 
 Under User data, choose a Mac folder to store game history, settings and cached logs outside the prefix. A symbolic link preserves the ClickOnce path at `AppData/Local/Apps/2.0/Data`, including generated deployment and account subdirectories. Existing data is copied before the link changes; **Use Default Folder** copies it back into the prefix while retaining the external copy. Folder changes apply after restarting MTGO, and **Show in Finder** opens the selected location.
 
@@ -143,7 +194,7 @@ bazel-bin/src/MTGO.app/Contents/MacOS/MTGO --preview
 
 Start with [the runtime specification](tests/integration/startup_test.py). It uses standard `unittest` assertions and names the expected behaviors:
 
-- A launcher window opens centered with its Dock entry.
+- Startup progress appears within a display's usable area with its Dock entry.
 - Corrupt downloads and catalogs missing a native release fail before Wine starts.
 - An incompatible Wine runtime is rejected before prefix initialization.
 - A fresh launch downloads the real runtime archive and installs official MTGO even when the version API is unavailable.
@@ -151,9 +202,9 @@ Start with [the runtime specification](tests/integration/startup_test.py). It us
 - A current deployment relaunches without installation, migrates its desktop shortcut safely and retains one native session when opened again.
 - Cached activation works without the deployment provider or desktop shortcut, and the SDK launcher exits after MTGO exits.
 
-A lifecycle scenario reuses one real installation across fresh, cached and offline launches. Progress stages are named in the spec rather than asserted as protocol integers. The scenario uses a local version API and runtime archive server while running the real ClickOnce installer and MTGO client.
+The lifecycle test installs MTGO once, then checks cached relaunch and offline activation using that installation. A local HTTP server supplies version responses and runtime archives; ClickOnce downloads MTGO from its official provider. Progress assertions use SDK stage names to identify the expected sequence.
 
-The tests use separate observers because Win32 startup and macOS integration expose different information. A Win32 observer checks the main window and matching Common Language Runtime (CLR) and just-in-time (JIT) compiler modules over ten seconds; a native observer checks window placement, Dock behavior and the crossfade. Both run outside the app. Process control, disposable prefixes and logs are centralized in `tests/integration/fixtures.py`, with `run.py` providing the Bazel entry point.
+Two observer processes check startup from Windows and macOS. A Win32 observer watches MTGO's main window and Common Language Runtime (CLR) and just-in-time (JIT) compiler modules for ten seconds, checking that both modules match the selected processor architecture. A macOS observer checks window placement, Dock ownership and the handoff from launcher progress to a visible MTGO main window. Fixtures in `tests/integration/fixtures.py` manage processes, temporary prefixes and logs; `run.py` starts the tests from Bazel.
 
 `//tests:mtgo_startup` runs the ARM64 specification; `//tests:mtgo_startup_x86_64` runs it for Intel through Rosetta. The Intel target must be selected explicitly and is added to CI for tagged releases. Real-client tests require a logged-in macOS GUI session and internet access. Fixtures use disposable prefixes, retain logs under `bazel-testlogs`, and never accept MTGO's license agreement or enter account credentials. To reuse verified Framework packages, pass `--test_env=MTGO_TEST_PACKAGE_CACHE=/path/to/cache`.
 
@@ -161,14 +212,14 @@ The tests use separate observers because Win32 startup and macOS integration exp
 
 | Target | Behavior |
 | --- | --- |
-| `//tests:dock_attention` | A Win32 fixture requests and stops attention, regains focus and closes its window. Native checks observe the indicator, animation and focus behavior through the packaged Wine driver. |
+| `//tests:dock_attention` | Runs a Win32 fixture that requests and stops attention, regains focus and closes its window. Native checks observe dock icon changes, animation and focus behavior after extracting a signed release archive. |
 | `//tests:dock_attention_x86_64` | The same attention check with Intel Wine through Rosetta. |
 | `//tests:settings` | Native preference panes, saved selections, icon import and reset, transition controls, and storage totals that exclude Wine links into host folders. Pane captures are retained in test outputs. |
 | `//tests:preparation` | Framework component installation for both architectures, progress after successful writes, and user-data migration, reset, conflicting stores and unavailable folders. |
 
 Attention and settings tests require a GUI session and run exclusively because they change foreground focus. Preparation tests use file fixtures without starting Wine. The real-client specification connects these checks to installation: it exercises download, extraction and NGen, starts ClickOnce with an external user-data folder, and verifies that hiding routine progress still permits setup and errors to appear.
 
-Startup here means a stable main window with matching CLR/JIT architecture. Automated checks cover native window metadata and backend diagnostics; window responsiveness, rendered pixels, login and gameplay require manual validation. Provider-skip assertions inspect SDK diagnostics, and native-image assertions inspect generated files rather than proving those images were loaded.
+A startup test passes when MTGO keeps a main window open with CLR and JIT modules that match the selected processor architecture. Window responsiveness, rendered pixels, animation appearance, login and gameplay require manual validation. Checks for skipped provider requests rely on SDK diagnostics. Native-image checks verify generated files and their architecture; they do not establish that MTGO loaded those files.
 
 Run the main CI test set locally with:
 
@@ -177,17 +228,35 @@ Run the main CI test set locally with:
   //tests:mtgo_startup //tests:dock_attention
 ```
 
-On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) builds the app and DMG, runs release-packaging checks and the targets above, then uploads matching DMG, runtime archives, catalog and checksums as `MTGO-macos`. Version tags run the same workflow with Intel lifecycle and attention tests added.
+### CI and Incremental Builds
 
-CI reuses cached Bazel outputs and pinned source downloads across runs, while executing tests each time. Clean builds of both runtimes have a three-hour job limit; if a build or test fails, available native logs and test outputs are retained in `mtgo-startup-logs`.
+On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) prepares an Apple SDK archive on macOS, then builds Wine and its dependencies in two parallel Linux jobs: ARM64 on `ubuntu-24.04-arm` and Intel on `ubuntu-24.04`. A macOS job imports both outputs, signs and packages the runtimes, builds the universal app and DMG, and runs the tests above. Version tags add Intel lifecycle and attention tests before release staging.
+
+Workflow timeouts allow 15 minutes for SDK preparation, 60 minutes for each Linux runtime build, and 45 minutes for macOS packaging and tests. Each Linux job runs one Bazel action at a time with four compiler jobs. After testing, CI uploads a DMG, runtime archives, catalog and checksums as `MTGO-macos`. Linux build logs are uploaded per architecture; macOS test logs are in `mtgo-startup-logs`.
+
+CI caches build tools, downloaded packages and compiled outputs separately:
+
+| Cache | Reused content |
+| --- | --- |
+| Apple SDK archive | SDK files and Darwin compiler runtime, keyed by SDK settings, compiler identity and runtime hash. |
+| Linux toolchain image | BuildKit layers containing Clang, OSXCross and SDK files, scoped by host architecture. |
+| Linux build cache | Dependency downloads, completed library builds and unsigned Wine archives, separated by host, target and toolchain image. |
+| macOS build cache | Imported runtimes, compiled Swift and launcher binaries, signed bundles, release archives and DMG files. Keys include compiler versions, build inputs and transferred archive hashes. |
+| Framework downloads | Verified Microsoft installer and activation DLLs. Wine prefixes and installed MTGO clients are created afresh for integration tests. |
+
+GitHub Actions looks for a cache key matching current build inputs and restores a compatible earlier entry if that key is unavailable. Bazel then checks input hashes before reusing individual build outputs. Editing launcher UI code can reuse Wine, while changing a Wine patch recompiles Wine. Dependencies such as GnuTLS and FreeType remain reusable when their inputs are unchanged. Bazel caches complete build actions; compiler object files are not cached individually. Linux jobs keep Bazel installation files outside the shared cache because those directories must belong to the user running Bazel.
+
+GitHub Actions cache entries cannot be overwritten, so failed builds save completed actions under a separate partial key. A later successful run can restore those actions and save a complete entry under the original input key. Integration tests run on every invocation with `--nocache_test_results`.
 
 ### Intel Testing
 
 For manual Intel testing on Apple silicon, build the Intel-only launcher and use the local runtime until release assets are published:
 
 ```sh
-./bazelw build //src:MTGO_intel
-MTGO_RUNTIME_ROOT="$PWD/bazel-bin/src/runtime_intel" \
+./bazelw build //src:MTGO_intel //:runtime_x86_64
+runtime_dir="$(mktemp -d)"
+tar -xJf bazel-bin/src/runtime-0.1.0-macos-x86_64.tar.xz -C "$runtime_dir"
+MTGO_RUNTIME_ROOT="$runtime_dir" \
 MTGO_PREFIX_ROOT="$HOME/Library/Application Support/MTGO-OSX/Prefixes/x86_64" \
   bazel-bin/src/MTGO_intel.app/Contents/MacOS/MTGO
 ```
