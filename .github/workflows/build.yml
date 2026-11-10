@@ -8,52 +8,285 @@ on:
   workflow_call:
     inputs:
       test_intel:
-        description: Run the Intel lifecycle specification through Rosetta
+        description: Run Intel lifecycle tests through Rosetta
         type: boolean
         default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build:
+  toolchain:
+    name: Prepare Apple SDK
     runs-on: macos-15
-    timeout-minutes: 180
+    timeout-minutes: 15
+    outputs:
+      fingerprint: ${{ steps.sdk.outputs.fingerprint }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check the release tag and build host
+      - name: Check release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist)
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            printf 'Release tag %s must match app version v%s.\n' "$GITHUB_REF_NAME" "$version" >&2
+            exit 1
+          fi
+      - name: Identify Apple SDK and compiler runtime
+        id: sdk
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import subprocess
+
+          sdk = Path(subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()).resolve()
+          clang = Path(subprocess.check_output(['xcrun', 'clang', '-print-resource-dir'], text=True).strip())
+          runtime = (clang / 'lib/darwin/libclang_rt.osx.a').resolve()
+          identity = subprocess.check_output(['xcrun', 'clang', '--version'])
+          digest = hashlib.sha256(identity + (sdk / 'SDKSettings.json').read_bytes() + runtime.read_bytes()).hexdigest()
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'MTGO_SDK_PATH={sdk}\nMTGO_COMPILER_RT={runtime}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'fingerprint={digest}\n')
+          PY
+      - name: Restore Apple toolchain archive
+        id: sdk-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/apple-toolchain.tar.gz
+          key: apple-toolchain-${{ steps.sdk.outputs.fingerprint }}
+      - name: Archive Apple SDK and compiler runtime
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import tarfile
+
+          archive = Path(os.environ['RUNNER_TEMP']) / 'apple-toolchain.tar.gz'
+          with tarfile.open(archive, 'w:gz', format=tarfile.PAX_FORMAT) as output:
+              output.add(os.environ['MTGO_SDK_PATH'], arcname='macos_sdk')
+              output.add(os.environ['MTGO_COMPILER_RT'], arcname='compiler_rt/libclang_rt.osx.a')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apple-toolchain
+          path: ${{ runner.temp }}/apple-toolchain.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  runtime:
+    name: Build ${{ matrix.architecture }} runtime on Linux
+    needs: toolchain
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+          - architecture: x86_64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apple-toolchain
+          path: ${{ runner.temp }}
+      - name: Prepare toolchain contexts and build directories
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/apple-toolchain" "$RUNNER_TEMP/mtgo-build" \
+            "$RUNNER_TEMP/mtgo-bazel-cache" "$RUNNER_TEMP/native-artifacts"
+          tar -xzf "$RUNNER_TEMP/apple-toolchain.tar.gz" -C "$RUNNER_TEMP/apple-toolchain"
+          printf 'BAZEL_CACHE=%s/mtgo-bazel-cache\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+        id: buildx
+        with:
+          driver-opts: |
+            memory=8g
+            cpu-period=100000
+            cpu-quota=400000
+      - name: Build Linux toolchain image
+        id: image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
+        with:
+          context: tools/linux
+          load: true
+          tags: mtgo-osx-cross:ci
+          provenance: false
+          build-args: BUILD_JOBS=4
+          build-contexts: |
+            macos_sdk=${{ runner.temp }}/apple-toolchain/macos_sdk
+            compiler_rt=${{ runner.temp }}/apple-toolchain/compiler_rt
+          cache-from: type=gha,version=2,scope=macos-cross-${{ runner.arch }}
+          cache-to: type=gha,version=2,scope=macos-cross-${{ runner.arch }},mode=max
+      - name: Stop BuildKit before compiling Wine
+        run: docker buildx stop '${{ steps.buildx.outputs.name }}'
+      - name: Calculate native build cache key
+        id: cache-key
+        shell: bash
+        env:
+          TOOLCHAIN_IMAGE: ${{ steps.image.outputs.imageid }}
+          BAZEL_VERSION_HASH: ${{ hashFiles('.bazelversion') }}
+          NATIVE_INPUTS: ${{ hashFiles('.bazelrc', 'bazelw', 'MODULE.bazel', 'MODULE.bazel.lock', 'third_party/**/*.bzl', 'third_party/**/BUILD.bazel', 'third_party/**/CMakeLists.txt', 'third_party/**/*.patch', 'third_party/sources.lock.json', 'tools/build_native.py', 'tools/copy_tree.py', 'tools/macos_sdk.bzl') }}
+        run: |
+          prefix="bazel-native-${RUNNER_ARCH}-${TARGET_ARCHITECTURE}-${BAZEL_VERSION_HASH}-${TOOLCHAIN_IMAGE}"
+          printf 'key=%s-v2-%s\nprefix=%s-\n' "$prefix" "$NATIVE_INPUTS" "$prefix" >> "$GITHUB_OUTPUT"
+          printf 'compatible-prefix=bazel-native-%s-%s-%s-\n' "$RUNNER_ARCH" "$TARGET_ARCHITECTURE" "$BAZEL_VERSION_HASH" >> "$GITHUB_OUTPUT"
+      - name: Restore native build cache
+        id: native-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.BAZEL_CACHE }}
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.key }}-
+            ${{ steps.cache-key.outputs.prefix }}
+            ${{ steps.cache-key.outputs.compatible-prefix }}
+      - name: Discard cached Bazel installation files
+        shell: bash
+        run: |
+          if [[ -d "$BAZEL_CACHE/bazel" ]]; then
+            chmod -R u+w "$BAZEL_CACHE/bazel"
+            rm -rf "$BAZEL_CACHE/bazel"
+          fi
+      - name: Build Wine and archive unsigned binaries
+        id: native-build
+        shell: bash
+        run: |
+          docker run --rm --cpus=4 --memory=12g --memory-swap=12g \
+            --env TARGET_ARCHITECTURE \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/mtgo-build,target=/build" \
+            --mount "type=bind,source=$BAZEL_CACHE,target=/build/cache" \
+            --mount "type=bind,source=$RUNNER_TEMP/native-artifacts,target=/artifacts" \
+            mtgo-osx-cross:ci bash -euo pipefail -c '
+              ./bazelw --output_user_root=/build/bazel --output_base=/build/output --host_jvm_args=-Xmx512m build \
+                "//third_party/wine:archive_$TARGET_ARCHITECTURE" \
+                --jobs=1 --define=native_jobs=4 --symlink_prefix=/build/links/ \
+                --disk_cache=/build/cache/actions --repository_cache=/build/cache/repositories \
+                --lockfile_mode=off --sandbox_debug
+              cp "/build/links/bin/third_party/wine/wine-$TARGET_ARCHITECTURE.tar.gz" /artifacts/
+            '
+      - name: Update container output ownership
+        if: ${{ always() && steps.native-build.outcome != 'skipped' }}
+        shell: bash
+        run: |
+          sudo chown -Rh "$(id -u):$(id -g)" "$BAZEL_CACHE" \
+            "$RUNNER_TEMP/mtgo-build" "$RUNNER_TEMP/native-artifacts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wine-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/native-artifacts/wine-${{ matrix.architecture }}.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - name: Upload native build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-logs-${{ matrix.architecture }}
+          path: |
+            ${{ runner.temp }}/mtgo-build/output/execroot/_main/bazel-out/*/bin/third_party/*/*/Logs/build.log
+            ${{ runner.temp }}/mtgo-build/output/sandbox/processwrapper-sandbox/*/execroot/_main/bazel-out/*/bin/third_party/*/*/Logs/build.log
+          if-no-files-found: ignore
+      - name: Save native build cache
+        if: ${{ !cancelled() && steps.native-build.outcome == 'success' && steps.native-cache.outputs.cache-primary-key != '' && steps.native-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.BAZEL_CACHE }}
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Cache completed dependencies after failure
+        if: ${{ failure() && !cancelled() && steps.native-build.outcome == 'failure' && steps.native-cache.outputs.cache-primary-key != '' && steps.native-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.BAZEL_CACHE }}
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}-partial-${{ github.run_id }}-${{ github.run_attempt }}
+
+  build:
+    name: Package and test on macOS
+    needs: [toolchain, runtime]
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check build architecture and Rosetta
         shell: bash
         run: |
           test "$(uname -m)" = arm64
           /usr/bin/arch -x86_64 /usr/bin/true
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist)
-            test "$GITHUB_REF_NAME" = "v$version"
-          fi
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Configure Bazel directories
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wine-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/native-artifacts
+      - name: Configure runtime imports and macOS cache key
+        id: cache-key
         shell: bash
+        env:
+          SDK_FINGERPRINT: ${{ needs.toolchain.outputs.fingerprint }}
+          BAZEL_VERSION_HASH: ${{ hashFiles('.bazelversion') }}
+          MACOS_INPUTS: ${{ hashFiles('BUILD.bazel', 'LICENSE', 'NOTICE', '.bazelrc', 'bazelw', 'MODULE.bazel', 'MODULE.bazel.lock', 'src/**', 'tools/**', 'third_party/**', 'tests/**', '.bazelversion') }}
         run: |
           printf 'BAZEL_OUTPUT_BASE=%s/mtgo-bazel-output\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           printf 'BAZEL_CACHE=%s/mtgo-bazel-cache\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - name: Restore Bazel cache
+          printf 'MTGO_NATIVE_ARTIFACTS=%s/native-artifacts\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'MTGO_TEST_PACKAGE_CACHE=%s/framework-packages\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          compiler=$( { xcrun swiftc --version; dotnet --version; } | shasum -a 256 | cut -d ' ' -f 1)
+          archives=$(shasum -a 256 "$RUNNER_TEMP/native-artifacts"/wine-*.tar.gz | shasum -a 256 | cut -d ' ' -f 1)
+          prefix="bazel-macos-${RUNNER_ARCH}-${BAZEL_VERSION_HASH}-${SDK_FINGERPRINT}-${compiler}"
+          printf 'key=%s-%s-%s\nprefix=%s-\n' "$prefix" "$MACOS_INPUTS" "$archives" "$prefix" >> "$GITHUB_OUTPUT"
+      - name: Restore macOS build cache
         id: bazel-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.BAZEL_CACHE }}
-          key: bazel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}-${{ github.sha }}
+          key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
-            bazel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}-
+            ${{ steps.cache-key.outputs.key }}-
+            ${{ steps.cache-key.outputs.prefix }}
+      - name: Restore .NET Framework downloads
+        id: framework-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ env.MTGO_TEST_PACKAGE_CACHE }}/NDP481.exe
+            ${{ env.MTGO_TEST_PACKAGE_CACHE }}/arm64/*.dll
+            ${{ env.MTGO_TEST_PACKAGE_CACHE }}/x86_64/*.dll
+          key: framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}-${{ inputs.test_intel || false }}
+          restore-keys: |
+            framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}-${{ inputs.test_intel || false }}-
+            framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}-
+            framework-
       - name: Test release packaging
         run: python3 -m unittest discover -s tests -p release_test.py -v
-      - name: Build the native app and DMG
+      - name: Build app, DMG and signed runtimes
+        id: macos-build
         run: |
-          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" build //:MTGO //:dmg \
-            --disk_cache="$BAZEL_CACHE/actions" \
+          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" build //:MTGO //:dmg //:runtime_arm64 //:runtime_x86_64 \
+            --jobs=2 --disk_cache="$BAZEL_CACHE/actions" \
             --repository_cache="$BAZEL_CACHE/repositories" --sandbox_debug
-      - name: Install and start the real MTGO client
+      - name: Run MTGO integration tests
+        id: integration-tests
         shell: bash
         env:
           TEST_INTEL: ${{ inputs.test_intel || false }}
@@ -63,12 +296,13 @@ jobs:
             targets+=(//tests:mtgo_startup_x86_64 //tests:dock_attention_x86_64)
           fi
           ./bazelw --output_base="$BAZEL_OUTPUT_BASE" test "${targets[@]}" \
-            --disk_cache="$BAZEL_CACHE/actions" \
+            --jobs=2 --disk_cache="$BAZEL_CACHE/actions" \
             --repository_cache="$BAZEL_CACHE/repositories" \
-            --sandbox_debug --nocache_test_results --test_output=errors
-      - name: Stage the tested release assets
+            --sandbox_debug --nocache_test_results --test_output=errors \
+            --test_env=MTGO_TEST_PACKAGE_CACHE
+      - name: Stage release assets
         run: python3 tools/release.py stage --output dist
-      - name: Upload the matching app and runtimes
+      - name: Upload app and runtime archives
         uses: actions/upload-artifact@v4
         with:
           name: MTGO-macos
@@ -86,9 +320,31 @@ jobs:
             ${{ env.BAZEL_OUTPUT_BASE }}/execroot/_main/bazel-out/*/bin/third_party/*/*/Logs/build.log
             ${{ env.BAZEL_OUTPUT_BASE }}/sandbox/darwin-sandbox/*/execroot/_main/bazel-out/*/bin/third_party/*/*/Logs/build.log
           if-no-files-found: ignore
-      - name: Save Bazel cache
-        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+      - name: Save .NET Framework downloads
+        if: >-
+          ${{ !cancelled()
+              && (steps.integration-tests.outcome == 'success' || steps.integration-tests.outcome == 'failure')
+              && steps.framework-cache.outputs.cache-primary-key != ''
+              && steps.framework-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ env.MTGO_TEST_PACKAGE_CACHE }}/NDP481.exe
+            ${{ env.MTGO_TEST_PACKAGE_CACHE }}/arm64/*.dll
+            ${{ env.MTGO_TEST_PACKAGE_CACHE }}/x86_64/*.dll
+          key: >-
+            ${{ steps.integration-tests.outcome == 'success'
+                && steps.framework-cache.outputs.cache-primary-key
+                || format('{0}-partial-{1}-{2}', steps.framework-cache.outputs.cache-primary-key, github.run_id, github.run_attempt) }}
+      - name: Save macOS build cache
+        if: ${{ !cancelled() && steps.macos-build.outcome == 'success' && steps.integration-tests.outcome == 'success' && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: ${{ env.BAZEL_CACHE }}
           key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+      - name: Cache completed actions after failure
+        if: ${{ failure() && !cancelled() && (steps.macos-build.outcome == 'failure' || steps.integration-tests.outcome == 'failure') && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.BAZEL_CACHE }}
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}-partial-${{ github.run_id }}-${{ github.run_attempt }}

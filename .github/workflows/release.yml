@@ -33,26 +33,26 @@ jobs:
         with:
           name: MTGO-macos
           path: dist
-      - name: Verify the transferred release assets
+      - name: Verify release assets
         id: assets
         shell: bash
         run: |
           runtime_tag=$(python3 tools/release.py --repository "$GH_REPO" verify --directory dist --tag "$RELEASE_TAG")
           echo "runtime_tag=$runtime_tag" >> "$GITHUB_OUTPUT"
-      - name: Check that the app release is unpublished
+      - name: Require an unpublished app release
         shell: bash
         run: |
           if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
             test "$draft" = true || { echo 'Published app releases cannot be replaced.' >&2; exit 1; }
           fi
-      - name: Prepare the runtime release
+      - name: Prepare runtime release
         shell: bash
         env:
           RUNTIME_TAG: ${{ steps.assets.outputs.runtime_tag }}
         run: |
           if draft=$(gh release view "$RUNTIME_TAG" --json isDraft --jq .isDraft); then
             if [[ "$draft" != true ]]; then
-              # Published payloads are immutable: a new build must use a new runtime version.
+              # Published runtimes cannot be replaced; changed archives need a new version.
               gh release download "$RUNTIME_TAG" --pattern 'runtime-*.tar.xz' \
                 --pattern RuntimePackages.json --dir published-runtime
               for asset in dist/runtime-*.tar.xz dist/RuntimePackages.json; do
@@ -61,29 +61,29 @@ jobs:
                   exit 1
                 }
               done
-              echo "Reusing the published runtime assets."
+              echo "Reusing published runtime assets."
               exit 0
             fi
           else
             printf '%s\n' \
               'Native ARM64 and Intel Wine runtimes for MTGO on macOS.' \
               'Development preview: ad-hoc signed and not notarized.' \
-              'Publish this runtime release before publishing the matching app release.' > runtime-notes.txt
+              'Publish matching runtime assets before making an app release public.' > runtime-notes.txt
             gh release create "$RUNTIME_TAG" --draft --prerelease --target "$RELEASE_COMMIT" \
               --title "MTGO runtime ${RUNTIME_TAG#runtime-v}" --notes-file runtime-notes.txt
           fi
           gh release upload "$RUNTIME_TAG" dist/runtime-*.tar.xz dist/RuntimePackages.json --clobber
-      - name: Prepare the app release
+      - name: Prepare app release
         shell: bash
         run: |
           if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
             test "$draft" = true || { echo 'Published app releases cannot be replaced.' >&2; exit 1; }
           else
             printf '%s\n' \
-              'Download the universal DMG and drag MTGO into Applications.' \
-              'The launcher downloads the matching ARM64 or Intel runtime on first launch.' \
+              "Open MTGO-${RELEASE_TAG#v}.dmg and drag MTGO into Applications." \
+              'MTGO-OSX downloads an ARM64 runtime on Apple silicon or an x86_64 runtime on Intel Macs during setup.' \
               'Development preview: ad-hoc signed and not notarized.' \
-              'Publish the matching runtime release before making this app release public.' > app-notes.txt
+              'Publish matching runtime assets before making this app release public.' > app-notes.txt
             gh release create "$RELEASE_TAG" --draft --prerelease --verify-tag \
               --title "MTGO ${RELEASE_TAG#v}" --notes-file app-notes.txt
           fi
