@@ -8,6 +8,5 @@ native_build(
     sources = {
         "@mtgo_cmake//:source": "cmake",
         "@mtgo_ninja//:source": "ninja",
-        "@mtgo_meson//:source": "meson",
     },
 )

@@ -1,9 +1,10 @@
 load("//third_party:native.bzl", "native_build")
+load("@macos_sdk//:toolchain.bzl", "BUILD_OS", "HOST_ARCH")
 
 package(default_visibility = ["//visibility:public"])
 
 native_build(
     name = "llvm_mingw",
     kind = "archive",
-    source = "@mtgo_llvm_mingw//:source",
+    source = "@mtgo_llvm_mingw_linux_" + HOST_ARCH + "//:source" if BUILD_OS == "linux" else "@mtgo_llvm_mingw//:source",
 )

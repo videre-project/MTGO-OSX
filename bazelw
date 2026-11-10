@@ -3,17 +3,21 @@ set -euo pipefail
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 version=$(cat "$project_dir/.bazelversion")
-if [[ "$(uname -s)-$(uname -m)" != Darwin-arm64 ]]; then
-    echo 'This project currently targets an Apple Silicon macOS build host.' >&2
-    exit 1
-fi
-name="bazel-$version-darwin-arm64"
+case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64) host=darwin-arm64 ;;
+    Linux-aarch64|Linux-arm64) host=linux-arm64 ;;
+    Linux-x86_64) host=linux-x86_64 ;;
+    *) echo 'Use an Apple Silicon Mac or an ARM64/Intel Linux build host.' >&2; exit 1 ;;
+esac
+name="bazel-$version-$host"
 expected=$(awk -v name="$name" '$2 == name {print $1}' "$project_dir/tools/bazel.sha256")
 if [[ -z "$expected" ]]; then
     echo "No pinned checksum for $name; update tools/bazel.sha256 with .bazelversion." >&2
     exit 1
 fi
-cache="${XDG_CACHE_HOME:-$HOME/Library/Caches}/MTGO-OSX"
+default_cache="$HOME/Library/Caches"
+[[ "$host" == linux-* ]] && default_cache="$HOME/.cache"
+cache="${XDG_CACHE_HOME:-$default_cache}/MTGO-OSX"
 binary="$cache/$name"
 mkdir -p "$cache"
 if [[ ! -x "$binary" ]]; then

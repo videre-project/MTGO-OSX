@@ -40,31 +40,6 @@
     "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-mac.tar.xz",
     "sha256": "12ef6830317743cfd3f0ab1724bde43fcc270d8b6d8564f8c12c2a2b7f993570"
   },
-  "dxvk": {
-    "url": "https://codeload.github.com/metalsharp/DXVK-MacOS/tar.gz/a7ed93c450a215fbd96f59d9f6129ef46b92de65",
-    "revision": "a7ed93c450a215fbd96f59d9f6129ef46b92de65",
-    "sha256": "4339c913411ce5b7acb49526a4d3325d08eb004ad999cc9bcef755275d5bc552"
-  },
-  "dxvk_vulkan": {
-    "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
-    "revision": "8864cdc896bbc2a9b6eb36b3218fc9ef57908d77",
-    "sha256": "35824117f649befc664a12622bc801eddbba036ac03d906db400ee1c1e7903e9"
-  },
-  "dxvk_spirv": {
-    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/tar.gz/04f10f650d514df88b76d25e83db360142c7b174",
-    "revision": "04f10f650d514df88b76d25e83db360142c7b174",
-    "sha256": "1b220e3eec1714f0451b0e3652979bd280edf10893f617837b88e6359a804ded"
-  },
-  "dxbc_spirv": {
-    "url": "https://codeload.github.com/doitsujin/dxbc-spirv/tar.gz/bf14419e5fa7eacb817b7b632f03cb61d61bbad7",
-    "revision": "bf14419e5fa7eacb817b7b632f03cb61d61bbad7",
-    "sha256": "7a2bd35d2a2186f5f77137c00302b0d9364ac01017e8ae41e30f61850d7cc2f4"
-  },
-  "display_info": {
-    "url": "https://codeload.github.com/doitsujin/libdisplay-info/tar.gz/275e6459c7ab1ddd4b125f28d0440716e4888078",
-    "revision": "275e6459c7ab1ddd4b125f28d0440716e4888078",
-    "sha256": "c83c3e600f90a3ac98932e9259de62ad8ad3a65dd5efb1d2abcb1e4d1c8f494a"
-  },
   "moltenvk": {
     "url": "https://codeload.github.com/KhronosGroup/MoltenVK/tar.gz/5189f8de86ec365860f63bf1da736815cfaea5cd",
     "revision": "5189f8de86ec365860f63bf1da736815cfaea5cd",
@@ -90,21 +65,6 @@
     "revision": "a56bad8bbb770ee266e930c95d37fff2a5be7fea",
     "sha256": "12e10fb541270632f6683286ce8c7e8c321fe4addb53fa91ed498b95c1758f93"
   },
-  "dxbc_headers": {
-    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/tar.gz/c8ad050fcb29e42a2f57d9f59e97488f465c436d",
-    "revision": "c8ad050fcb29e42a2f57d9f59e97488f465c436d",
-    "sha256": "5b6f38b430f1c68c7395c570053403da14eb4cecc7fcb4040e7a5248c2f63874"
-  },
-  "glslang": {
-    "url": "https://codeload.github.com/KhronosGroup/glslang/tar.gz/8a85691a0740d390761a1008b4696f57facd02c4",
-    "revision": "8a85691a0740d390761a1008b4696f57facd02c4",
-    "sha256": "1d1497cfb763cdc80782a86ec269b053f3cae0e7cbef2278bf0eb1855ab0bfcb"
-  },
-  "meson": {
-    "url": "https://files.pythonhosted.org/packages/9c/07/b48592d325cb86682829f05216e4efb2dc881762b8f1bafb48b57442307a/meson-1.9.1-py3-none-any.whl",
-    "sha256": "f824ab770c041a202f532f69e114c971918ed2daff7ea56583d80642564598d0",
-    "version": "1.9.1"
-  },
   "ninja": {
     "url": "https://files.pythonhosted.org/packages/3c/74/d02409ed2aa865e051b7edda22ad416a39d81a84980f544f8de717cab133/ninja-1.13.0-py3-none-macosx_10_9_universal2.whl",
     "sha256": "fa2a8bfc62e31b08f83127d1613d10821775a0eb334197154c4d6067b7068ff1",
@@ -129,5 +89,25 @@
     "url": "https://files.pythonhosted.org/packages/39/a1/4136777ed6a56df83e7c748ad28892f0672cbbcdc3b3d15a57df6ba72443/mac_alias-2.2.2-py3-none-any.whl",
     "sha256": "504ab8ac546f35bbd75ad014d6ad977c426660aa721f2cd3acf3dc2f664141bd",
     "version": "2.2.2"
+  },
+  "dxvk_arm64x": {
+    "url": "https://github.com/metalsharp/DXVK-MacOS/releases/download/v3.1.1-macos.3/dxvk-macos-v3.1.1-macos.3-arm64x.tar.zst",
+    "sha256": "cb8dac6e97f4163c733d7e075ac6df3c95c9eac718177ff351aea869e7f2293d",
+    "revision": "a7ed93c450a215fbd96f59d9f6129ef46b92de65",
+    "strip_prefix": "dxvk-macos-v3.1.1-macos.3-arm64x"
+  },
+  "dxvk_x86_64": {
+    "url": "https://github.com/metalsharp/DXVK-MacOS/releases/download/v3.1.1-macos.3/dxvk-macos-v3.1.1-macos.3-x86_64.tar.zst",
+    "sha256": "5b0c9ee3f672e891e033d7fd29d7da4aa8692d2ae5cf7cde48879fa149a0de3f",
+    "revision": "a7ed93c450a215fbd96f59d9f6129ef46b92de65",
+    "strip_prefix": "dxvk-macos-v3.1.1-macos.3-x86_64"
+  },
+  "llvm_mingw_linux_arm64": {
+    "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-ubuntu-22.04-aarch64.tar.xz",
+    "sha256": "595e95bdffabfc62559fe26e30bdfbccf277cbaed4902793555015ee47306b94"
+  },
+  "llvm_mingw_linux_x86_64": {
+    "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64.tar.xz",
+    "sha256": "919380403de87dca3c581c2053230cd298af5e891286628ba0613b7fed370926"
   }
 }

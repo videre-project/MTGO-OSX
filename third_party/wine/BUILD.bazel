@@ -1,4 +1,5 @@
-load("//third_party:native.bzl", "native_library")
+load("//third_party:native.bzl", "native_archive", "native_library")
+load("@native_artifacts//:configuration.bzl", "USE_IMPORTED_WINE")
 
 arm64_patches = [
     "patches/anycpu-arm64.patch",
@@ -38,8 +39,26 @@ native_library(
         "x86_64": {"patches": common_patches},
     },
     configure_options = [
-        "--enable-win64", "--with-mingw=clang", "--disable-tests",
+        "--enable-win64", "--with-mingw=llvm-mingw", "--disable-tests",
         "--without-x", "--without-wayland", "--with-vulkan",
     ],
+    archives = {
+        "arm64": "@native_artifacts//:wine-arm64.tar.gz",
+        "x86_64": "@native_artifacts//:wine-x86_64.tar.gz",
+    } if USE_IMPORTED_WINE else {},
+    visibility = ["//visibility:public"],
+)
+
+native_archive(
+    name = "archive_arm64",
+    dependency = ":wine",
+    architecture = "arm64",
+    visibility = ["//visibility:public"],
+)
+
+native_archive(
+    name = "archive_x86_64",
+    dependency = ":wine_x86_64",
+    architecture = "x86_64",
     visibility = ["//visibility:public"],
 )

@@ -8,12 +8,15 @@ load("@macos_sdk//:toolchain.bzl", "SDK_PATH", "SWIFTC")
 load("//third_party:native.bzl", "NativeBuildInfo")
 
 MacOSApplicationInfo = provider(fields = ["bundle"])
+RuntimeBundleInfo = provider(fields = ["archive"])
 RuntimeArchiveInfo = provider(fields = ["archive", "catalog"])
 
 def _quote(value):
     return "'" + value.replace("'", "'\\''") + "'"
 
 def _compile_swift(ctx, binary, architecture = "arm64"):
+    if not SWIFTC:
+        fail("Swift launcher targets require macOS. Linux supports the third_party runtime targets.")
     modules = ctx.actions.declare_directory(ctx.label.name + "." + architecture + ".module-cache")
     args = ctx.actions.args()
     args.add_all([
@@ -192,12 +195,13 @@ def _runtime_bundle_impl(ctx):
     sevenzip = ctx.attr.sevenzip[NativeBuildInfo].root
     llvm_mingw = ctx.attr._llvm_mingw[NativeBuildInfo].root
     bundle = ctx.actions.declare_directory(ctx.label.name)
+    archive = ctx.actions.declare_file(ctx.label.name + ".tar.xz")
     app = bundle.path + "/MTGO.app"
     resources = app + "/Contents/Resources"
     wine_arch = "aarch64" if ctx.attr.architecture == "arm64" else "x86_64"
     unix = resources + "/lib/wine/" + wine_arch + "-unix"
     windows = resources + "/lib/wine/" + wine_arch + "-windows"
-    inputs = [wine, sevenzip, llvm_mingw, ctx.file.manifest, ctx.file.infoplist, ctx.file.icon, ctx.file._copy_tree]
+    inputs = [wine, sevenzip, llvm_mingw, ctx.file.manifest, ctx.file.infoplist, ctx.file.icon, ctx.file._copy_tree, ctx.file._sign_runtime]
     commands = [
         "set -eu",
         "mkdir -p %s/Contents/MacOS %s" % (_quote(app), _quote(resources)),
@@ -210,7 +214,6 @@ def _runtime_bundle_impl(ctx):
         "ln -s ../../../../MacOS/wine %s/wine" % _quote(unix),
         "ln -s ../Resources/lib/wine/%s-unix/ntdll.so %s/Contents/MacOS/ntdll.so" % (wine_arch, _quote(app)),
         "cp %s/prefix/7zz %s/bin/7zz" % (_quote(sevenzip.path), _quote(resources)),
-        "/usr/bin/codesign --force --sign - --timestamp=none %s/bin/7zz" % _quote(resources),
         "cp %s %s/Contents/Info.plist" % (_quote(ctx.file.infoplist.path), _quote(app)),
         "cp %s %s/GameIcon.icns" % (_quote(ctx.file.icon.path), _quote(resources)),
         "printf APPL'????' > %s/Contents/PkgInfo" % _quote(app),
@@ -228,23 +231,30 @@ def _runtime_bundle_impl(ctx):
             "/usr/bin/python3 %s %s/Licenses %s/Licenses" % (_quote(ctx.file._copy_tree.path), _quote(d3d9.path), _quote(bundle.path)),
         ])
     commands.extend([
+        "/usr/bin/python3 %s %s %s" % (_quote(ctx.file._sign_runtime.path), _quote(app), _quote(ctx.attr.architecture)),
         "/usr/bin/codesign --force --sign - --timestamp=none %s" % _quote(app),
         "/usr/bin/codesign --verify --deep --strict %s" % _quote(app),
         "cp %s %s/runtime.json" % (_quote(ctx.file.manifest.path), _quote(bundle.path)),
+        # Directory cache restoration can dereference symlinks; archive the signed bundle now.
+        "COPYFILE_DISABLE=1 /usr/bin/tar --format=pax -cJf %s -C %s ." % (_quote(archive.path), _quote(bundle.path)),
     ])
     ctx.actions.run_shell(
         inputs = inputs,
-        outputs = [bundle],
+        outputs = [bundle, archive],
         command = "\n".join(commands),
         mnemonic = "BundleNativeWineRuntime",
         execution_requirements = {"requires-darwin": "1", "no-remote": "1"},
     )
-    return [DefaultInfo(files = depset([bundle]))]
+    return [
+        DefaultInfo(files = depset([bundle])),
+        RuntimeBundleInfo(archive = archive),
+    ]
 
 runtime_bundle = rule(
     implementation = _runtime_bundle_impl,
     attrs = {
         "architecture": attr.string(default = "arm64", values = ["arm64", "x86_64"]),
+        "_sign_runtime": attr.label(default = "//tools:sign_runtime.py", allow_single_file = [".py"]),
         "wine": attr.label(mandatory = True, providers = [NativeBuildInfo]),
         "sevenzip": attr.label(mandatory = True, providers = [NativeBuildInfo]),
         "_llvm_mingw": attr.label(default = "//third_party/llvm_mingw:llvm_mingw", providers = [NativeBuildInfo]),
@@ -258,7 +268,7 @@ runtime_bundle = rule(
 
 
 def _runtime_archive_impl(ctx):
-    runtime = ctx.file.runtime
+    runtime = ctx.attr.runtime[RuntimeBundleInfo].archive
     filename = "runtime-%s-macos-%s.tar.xz" % (ctx.attr.version, ctx.attr.architecture)
     archive = ctx.actions.declare_file(filename)
     catalog = ctx.actions.declare_file(ctx.label.name + ".json")
@@ -272,16 +282,11 @@ def _runtime_archive_impl(ctx):
         }],
     })
     ctx.actions.run_shell(
-        inputs = [runtime, ctx.file._copy_tree],
+        inputs = [runtime],
         outputs = [archive, catalog],
         command = "\n".join([
             "set -eu",
-            "staging=$(mktemp -d)",
-            "trap 'rm -rf \"$staging\"' EXIT",
-            # Copy files behind Bazel's absolute input links; keep Wine's relative links.
-            "/usr/bin/python3 %s %s \"$staging\"" % (_quote(ctx.file._copy_tree.path), _quote(runtime.path)),
-            # Preserve Wine symlinks and wine.inf's mtime; the archive root is the runtime root.
-            "COPYFILE_DISABLE=1 /usr/bin/tar --format=pax -cJf %s -C \"$staging\" ." % _quote(archive.path),
+            "cp %s %s" % (_quote(runtime.path), _quote(archive.path)),
             "checksum=$(/usr/bin/shasum -a 256 %s | /usr/bin/cut -d ' ' -f 1)" % _quote(archive.path),
             "printf '%%s\n' %s | /usr/bin/sed \"s/@SHA256@/$checksum/\" > %s" % (_quote(metadata), _quote(catalog.path)),
         ]),
@@ -297,8 +302,7 @@ def _runtime_archive_impl(ctx):
 runtime_archive = rule(
     implementation = _runtime_archive_impl,
     attrs = {
-        "runtime": attr.label(mandatory = True, allow_single_file = True),
-        "_copy_tree": attr.label(default = "//tools:copy_tree.py", allow_single_file = [".py"]),
+        "runtime": attr.label(mandatory = True, providers = [RuntimeBundleInfo]),
         "version": attr.string(mandatory = True),
         "architecture": attr.string(mandatory = True, values = ["arm64", "x86_64"]),
         "release_url": attr.string(mandatory = True),

@@ -1,12 +1,18 @@
 """Verified third-party archives and per-source provenance."""
 
 def _source_impl(ctx):
-    ctx.download(ctx.attr.url, "source.archive", sha256 = ctx.attr.sha256)
+    if ctx.attr.strip_prefix:
+        ctx.download_and_extract(ctx.attr.url, sha256 = ctx.attr.sha256, stripPrefix = ctx.attr.strip_prefix)
+    else:
+        ctx.download(ctx.attr.url, "source.archive", sha256 = ctx.attr.sha256)
     metadata = {"url": ctx.attr.url, "sha256": ctx.attr.sha256}
     if ctx.attr.revision:
         metadata["revision"] = ctx.attr.revision
     ctx.file("source.json", json.encode_indent(metadata) + "\n")
-    ctx.file("BUILD.bazel", 'filegroup(name = "source", srcs = ["source.archive", "source.json"], visibility = ["//visibility:public"])\n')
+    if ctx.attr.strip_prefix:
+        ctx.file("BUILD.bazel", 'exports_files(glob(["**"]))\n')
+    else:
+        ctx.file("BUILD.bazel", 'filegroup(name = "source", srcs = ["source.archive", "source.json"], visibility = ["//visibility:public"])\n')
 
 pinned_source = repository_rule(
     implementation = _source_impl,
@@ -14,6 +20,7 @@ pinned_source = repository_rule(
         "url": attr.string(mandatory = True),
         "sha256": attr.string(mandatory = True),
         "revision": attr.string(),
+        "strip_prefix": attr.string(),
     },
 )
 
@@ -25,6 +32,7 @@ def _sources_impl(ctx):
             url = source["url"],
             sha256 = source["sha256"],
             revision = source.get("revision", ""),
+            strip_prefix = source.get("strip_prefix", ""),
         )
 
 sources = module_extension(implementation = _sources_impl)

@@ -3,6 +3,9 @@ module(name = "mtgo_osx", version = "0.1.0")
 macos_sdk = use_repo_rule("//tools:macos_sdk.bzl", "macos_sdk")
 macos_sdk(name = "macos_sdk")
 
+native_artifacts = use_repo_rule("//tools:native_artifacts.bzl", "native_artifacts")
+native_artifacts(name = "native_artifacts")
+
 dotnet_sdk = use_repo_rule("//tools:dotnet.bzl", "dotnet_sdk")
 dotnet_sdk(name = "dotnet_sdk")
 
@@ -18,20 +21,16 @@ use_repo(
     "mtgo_pkgconf",
     "mtgo_wine",
     "mtgo_llvm_mingw",
+    "mtgo_llvm_mingw_linux_arm64",
+    "mtgo_llvm_mingw_linux_x86_64",
     "mtgo_sevenzip",
-    "mtgo_dxvk",
-    "mtgo_dxvk_vulkan",
-    "mtgo_dxvk_spirv",
-    "mtgo_dxbc_spirv",
-    "mtgo_display_info",
+    "mtgo_dxvk_arm64x",
+    "mtgo_dxvk_x86_64",
     "mtgo_moltenvk",
     "mtgo_metal_patches",
     "mtgo_spirv_cross",
     "mtgo_mvk_vulkan",
     "mtgo_cereal",
-    "mtgo_dxbc_headers",
-    "mtgo_glslang",
-    "mtgo_meson",
     "mtgo_ninja",
     "mtgo_cmake",
     "mtgo_dmgbuild",
