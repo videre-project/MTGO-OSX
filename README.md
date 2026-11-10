@@ -177,7 +177,9 @@ Run the main CI test set locally with:
   //tests:mtgo_startup //tests:dock_attention
 ```
 
-On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) builds the app and DMG, runs release-packaging checks and the targets above, then uploads matching DMG, runtime archives, catalog and checksums as `MTGO-macos`. Test logs are uploaded separately, including after failures. Version tags run the same workflow with Intel lifecycle and attention tests added.
+On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) builds the app and DMG, runs release-packaging checks and the targets above, then uploads matching DMG, runtime archives, catalog and checksums as `MTGO-macos`. Version tags run the same workflow with Intel lifecycle and attention tests added.
+
+CI reuses cached Bazel outputs and pinned source downloads across runs, while executing tests each time. Clean builds of both runtimes have a three-hour job limit; if a build or test fails, available native logs and test outputs are retained in `mtgo-startup-logs`.
 
 ### Intel Testing
 

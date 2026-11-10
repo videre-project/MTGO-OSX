@@ -18,7 +18,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Check the release tag and build host
@@ -33,10 +33,26 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Configure Bazel directories
+        shell: bash
+        run: |
+          printf 'BAZEL_OUTPUT_BASE=%s/mtgo-bazel-output\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'BAZEL_CACHE=%s/mtgo-bazel-cache\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Restore Bazel cache
+        id: bazel-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.BAZEL_CACHE }}
+          key: bazel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}-
       - name: Test release packaging
         run: python3 -m unittest discover -s tests -p release_test.py -v
       - name: Build the native app and DMG
-        run: ./bazelw build //:MTGO //:dmg
+        run: |
+          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" build //:MTGO //:dmg \
+            --disk_cache="$BAZEL_CACHE/actions" \
+            --repository_cache="$BAZEL_CACHE/repositories" --sandbox_debug
       - name: Install and start the real MTGO client
         shell: bash
         env:
@@ -46,7 +62,10 @@ jobs:
           if [[ "$TEST_INTEL" == true ]]; then
             targets+=(//tests:mtgo_startup_x86_64 //tests:dock_attention_x86_64)
           fi
-          ./bazelw test "${targets[@]}" --test_output=errors
+          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" test "${targets[@]}" \
+            --disk_cache="$BAZEL_CACHE/actions" \
+            --repository_cache="$BAZEL_CACHE/repositories" \
+            --sandbox_debug --nocache_test_results --test_output=errors
       - name: Stage the tested release assets
         run: python3 tools/release.py stage --output dist
       - name: Upload the matching app and runtimes
@@ -56,7 +75,7 @@ jobs:
           path: dist/
           compression-level: 0
           if-no-files-found: error
-      - name: Upload integration logs
+      - name: Upload build and integration logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -64,4 +83,12 @@ jobs:
           path: |
             bazel-testlogs/tests/*/test.log
             bazel-testlogs/tests/*/test.outputs/
+            ${{ env.BAZEL_OUTPUT_BASE }}/execroot/_main/bazel-out/*/bin/third_party/*/*/Logs/build.log
+            ${{ env.BAZEL_OUTPUT_BASE }}/sandbox/darwin-sandbox/*/execroot/_main/bazel-out/*/bin/third_party/*/*/Logs/build.log
           if-no-files-found: ignore
+      - name: Save Bazel cache
+        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.BAZEL_CACHE }}
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
