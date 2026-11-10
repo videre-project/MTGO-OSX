@@ -1,0 +1,67 @@
+name: macOS app
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      test_intel:
+        description: Run the Intel lifecycle specification through Rosetta
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the release tag and build host
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          /usr/bin/arch -x86_64 /usr/bin/true
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist)
+            test "$GITHUB_REF_NAME" = "v$version"
+          fi
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test release packaging
+        run: python3 -m unittest discover -s tests -p release_test.py -v
+      - name: Build the native app and DMG
+        run: ./bazelw build //:MTGO //:dmg
+      - name: Install and start the real MTGO client
+        shell: bash
+        env:
+          TEST_INTEL: ${{ inputs.test_intel || false }}
+        run: |
+          targets=(//tests:launcher_startup //tests:settings //tests:preparation //tests:mtgo_startup //tests:dock_attention)
+          if [[ "$TEST_INTEL" == true ]]; then
+            targets+=(//tests:mtgo_startup_x86_64 //tests:dock_attention_x86_64)
+          fi
+          ./bazelw test "${targets[@]}" --test_output=errors
+      - name: Stage the tested release assets
+        run: python3 tools/release.py stage --output dist
+      - name: Upload the matching app and runtimes
+        uses: actions/upload-artifact@v4
+        with:
+          name: MTGO-macos
+          path: dist/
+          compression-level: 0
+          if-no-files-found: error
+      - name: Upload integration logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtgo-startup-logs
+          path: |
+            bazel-testlogs/tests/*/test.log
+            bazel-testlogs/tests/*/test.outputs/
+          if-no-files-found: ignore
