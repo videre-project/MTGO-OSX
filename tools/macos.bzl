@@ -281,7 +281,7 @@ def _runtime_archive_impl(ctx):
             # Copy files behind Bazel's absolute input links; keep Wine's relative links.
             "/usr/bin/python3 %s %s \"$staging\"" % (_quote(ctx.file._copy_tree.path), _quote(runtime.path)),
             # Preserve Wine symlinks and wine.inf's mtime; the archive root is the runtime root.
-            "COPYFILE_DISABLE=1 /usr/bin/tar -cJf %s -C \"$staging\" ." % _quote(archive.path),
+            "COPYFILE_DISABLE=1 /usr/bin/tar --format=pax -cJf %s -C \"$staging\" ." % _quote(archive.path),
             "checksum=$(/usr/bin/shasum -a 256 %s | /usr/bin/cut -d ' ' -f 1)" % _quote(archive.path),
             "printf '%%s\n' %s | /usr/bin/sed \"s/@SHA256@/$checksum/\" > %s" % (_quote(metadata), _quote(catalog.path)),
         ]),

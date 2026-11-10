@@ -203,7 +203,8 @@ enum LauncherObserver {
           $0.frame.contains(NSPoint(x: frame.midX, y: frame.midY))
         }), abs(frame.midX - screen.visibleFrame.midX) < 1,
           abs(frame.midY - screen.visibleFrame.midY) < 1 else {
-          fail("Native launcher is not centered in its display's usable area.")
+          fail("Native launcher is not centered in its display's usable area: window=\(frame), "
+            + "displays=\(NSScreen.screens.map { $0.visibleFrame }).")
         }
         guard app.activationPolicy == .regular else { fail("Native launcher has no Dock entry.") }
         print("PASS: native launcher presented a centered window with its Dock entry.")

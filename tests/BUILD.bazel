@@ -12,7 +12,7 @@ launcher_integration_test(
     name = "launcher_startup",
     app = "//src:MTGO",
     size = "small",
-    tags = ["requires-darwin", "no-remote", "no-sandbox"],
+    tags = ["exclusive", "requires-darwin", "no-remote", "no-sandbox"],
 )
 
 macos_tool(
@@ -45,7 +45,7 @@ mtgo_startup_test(
     launcher_observer = ":launcher_observer",
     size = "large",
     timeout = "long",
-    tags = ["external", "requires-darwin", "requires-network", "no-remote", "no-sandbox"],
+    tags = ["exclusive", "external", "requires-darwin", "requires-network", "no-remote", "no-sandbox"],
 )
 
 filegroup(
@@ -71,7 +71,7 @@ mtgo_startup_test(
     launcher_observer = ":launcher_observer",
     size = "large",
     timeout = "long",
-    tags = ["manual", "external", "requires-darwin", "requires-network", "no-remote", "no-sandbox"],
+    tags = ["exclusive", "manual", "external", "requires-darwin", "requires-network", "no-remote", "no-sandbox"],
 )
 
 macos_tool(
