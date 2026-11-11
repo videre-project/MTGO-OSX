@@ -22,7 +22,7 @@ Bazel writes `bazel-bin/src/MTGO.app` and `bazel-bin/dmg.dmg`. MTGO-OSX includes
 
 For local development, `MTGO_RUNTIME_ROOT` selects a runtime extracted from a release archive, as shown above. Extracting an archive preserves Wine’s relative symlinks across Bazel cache restoration. Integration tests download runtime archives from a local HTTP server, so development and testing can proceed before publishing GitHub release assets.
 
-Build `//:runtime_arm64` and `//:runtime_x86_64` to produce `bazel-bin/src/runtime-0.1.0-macos-<architecture>.tar.xz`. During app packaging, Bazel writes download URLs and SHA-256 hashes for these archives to `Contents/Resources/RuntimePackages.json`. Publish those runtime assets before distributing a DMG that references them; see [Releases](#releases).
+Build `//:runtime_arm64` and `//:runtime_x86_64` to produce `bazel-bin/src/runtime-0.1.0-macos-<architecture>.tar.xz`. During app packaging, Bazel writes download URLs and SHA-256 hashes for these archives to `Contents/Resources/RuntimePackages.json`. Each GitHub release includes these archives and a matching DMG; see [Releases](#releases).
 
 The DMG opens in Finder with MTGO and an Applications shortcut over a Retina background matching the launcher. Artwork and Finder metadata are generated from pinned `dmgbuild` dependencies without Finder automation. Builds are ad-hoc signed; distribution signing and notarization remain separate release work.
 
@@ -136,7 +136,7 @@ Bazel imports the archives instead of scheduling Wine or dependency compilation.
 
 ## Launch Flow
 
-On first launch, MTGO-OSX downloads a Wine runtime using a URL and SHA-256 hash recorded in `RuntimePackages.json`. Before installation, validation also checks binary architectures, Dock protocol compatibility and the helper app signature. Later launches reuse that installation without contacting GitHub. Runtime releases are versioned separately from the MTGO client.
+On first launch, MTGO-OSX downloads a Wine runtime using a URL and SHA-256 hash recorded in `RuntimePackages.json`. Before installation, validation also checks binary architectures, Dock protocol compatibility and the helper app signature. Later launches reuse that installation without contacting GitHub. Runtime versions are independent of MTGO client updates.
 
 Windows files, registry data and installed applications are stored in a separate directory called a Wine prefix. Setup prepares this prefix with architecture-matched .NET Framework files downloaded from Microsoft, then uses the Native Image Generator (`ngen.exe`) to compile Framework assemblies before starting MTGO. This preparation is reused on later launches.
 
@@ -265,11 +265,11 @@ This test bundle permits Rosetta. The universal distribution bundle requires nat
 
 ## Releases
 
-A push to `main` builds and tests without creating releases. Pushing an app tag such as `v0.1.0` starts the [release workflow](.github/workflows/release.yml), which runs the shared build and both runtime specifications before preparing draft GitHub releases for the app and runtime. Release assets are transferred from that build without rebuilding or re-signing them. These are development previews with ad-hoc signatures, without notarization or signing credentials.
+A push to `main` builds and tests without creating releases. Pushing an app tag such as `v0.1.0` starts the [release workflow](.github/workflows/release.yml), which runs the shared build and ARM64 and Intel lifecycle tests before preparing one draft release. It includes a DMG, both runtime archives and `RuntimePackages.json`. GitHub generates release notes for review and editing before publication.
 
-App tags must match `CFBundleShortVersionString` in `src/Info.plist`. Runtime versions are declared by `RUNTIME_VERSION` in `src/BUILD.bazel`; changed archives need a new runtime version. The pipeline refuses to replace published app or runtime assets. An existing runtime release can be reused only when its catalog and archive bytes match the current build. Unpublished drafts can be refreshed by rerunning the workflow.
+App tags must match `CFBundleShortVersionString` in `src/Info.plist`, which also determines runtime download URLs. Runtime archives remain versioned by `RUNTIME_VERSION` in `src/BUILD.bazel`; bump this when changing runtime contents. MTGO-OSX can reuse an installed runtime across app releases when its version and checksum match.
 
-Review and publish the `runtime-v<version>` draft first, then the `v<version>` app draft. Draft assets are unavailable through the launcher's public download URLs. Users download `MTGO-<version>.dmg`; the architecture-specific runtime archives and `RuntimePackages.json` belong to the runtime release.
+Publishing a draft makes the DMG and runtime assets available together. Rerunning the workflow can refresh draft assets while preserving edited notes; published releases cannot be replaced. GitHub provides SHA-256 digests for uploaded assets. An internal `SHA256SUMS` file verifies files transferred between CI jobs and stays in CI artifacts.
 
 Release packaging can also be verified locally:
 

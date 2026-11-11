@@ -1,7 +1,7 @@
 load("//tools:macos.bzl", "macos_application", "runtime_archive", "runtime_bundle", "runtime_catalog")
 
 RUNTIME_VERSION = "0.1.0"
-RUNTIME_RELEASE_URL = "https://github.com/videre-project/MTGO-OSX/releases/download/runtime-v" + RUNTIME_VERSION
+RELEASE_URL = "https://github.com/videre-project/MTGO-OSX/releases/download"
 
 exports_files(["Resources/MTGO-Background.jpg", "Resources/Fonts/Inter.ttf"])
 
@@ -93,13 +93,14 @@ runtime_bundle(
 )
 
 # Generate the archives and catalog together so the app pins the exact files
-# uploaded under runtime-v<version>.
+# uploaded with the app release.
 runtime_archive(
     name = "runtime_arm64",
     runtime = ":runtime",
     version = RUNTIME_VERSION,
     architecture = "arm64",
-    release_url = RUNTIME_RELEASE_URL,
+    app_infoplist = "Info.plist",
+    release_url = RELEASE_URL,
     visibility = ["//visibility:public"],
 )
 
@@ -126,7 +127,8 @@ runtime_archive(
     runtime = ":runtime_intel",
     version = RUNTIME_VERSION,
     architecture = "x86_64",
-    release_url = RUNTIME_RELEASE_URL,
+    app_infoplist = "Info.plist",
+    release_url = RELEASE_URL,
     visibility = ["//visibility:public"],
 )
 

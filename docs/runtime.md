@@ -6,7 +6,7 @@ Wine, .NET Framework 4.8.1 and MTGO run as ARM64 processes on Apple silicon and 
 
 ## Runtime Installation
 
-MTGO-OSX is distributed as a universal app with a `RuntimePackages.json` catalog listing download URLs and SHA-256 hashes for ARM64 and x86_64 archives. Wine, DXVK, MoltenVK, 7-Zip and dependency notices are packaged in those archives, allowing one DMG to support both architectures while downloading only the matching runtime. Archive hashes are generated during the build and remain tied to a runtime release version, independently of MTGO updates. See [Releases](../README.md#releases) for publication order.
+MTGO-OSX is distributed as a universal app with a `RuntimePackages.json` catalog listing download URLs and SHA-256 hashes for ARM64 and x86_64 archives. Wine, DXVK, MoltenVK, 7-Zip and dependency notices are packaged in those archives, allowing one DMG to support both architectures while downloading only the matching runtime. Each app release includes both archives and a matching catalog alongside its DMG. Archive hashes are computed during the build and pinned before publication; see [Releases](../README.md#releases).
 
 After verifying a download, installation extracts it into a staging directory on the installation volume. A `runtime.json` manifest identifies binaries inside a nested `MTGO.app` helper bundle. Validation checks the manifest schema, Dock protocol, minimum macOS version and binary architectures, followed by a strict signature check of the helper. Cancellation is checked before placing the validated directory at `~/Library/Application Support/MTGO-OSX/Runtimes/<version>/<architecture>` and registering the helper with Launch Services. Failed validation leaves earlier releases unchanged.
 

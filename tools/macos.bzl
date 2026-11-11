@@ -277,18 +277,20 @@ def _runtime_archive_impl(ctx):
         "packages": [{
             "version": ctx.attr.version,
             "architecture": ctx.attr.architecture,
-            "url": ctx.attr.release_url.rstrip("/") + "/" + filename,
+            "url": ctx.attr.release_url.rstrip("/") + "/v@APP_VERSION@/" + filename,
             "sha256": "@SHA256@",
         }],
     })
     ctx.actions.run_shell(
-        inputs = [runtime],
+        inputs = [runtime, ctx.file.app_infoplist],
         outputs = [archive, catalog],
         command = "\n".join([
             "set -eu",
+            "app_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' %s)" % _quote(ctx.file.app_infoplist.path),
+            "printf '%s\\n' \"$app_version\" | /usr/bin/grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+$'",
             "cp %s %s" % (_quote(runtime.path), _quote(archive.path)),
             "checksum=$(/usr/bin/shasum -a 256 %s | /usr/bin/cut -d ' ' -f 1)" % _quote(archive.path),
-            "printf '%%s\n' %s | /usr/bin/sed \"s/@SHA256@/$checksum/\" > %s" % (_quote(metadata), _quote(catalog.path)),
+            "printf '%%s\n' %s | /usr/bin/sed \"s/@SHA256@/$checksum/;s/@APP_VERSION@/$app_version/\" > %s" % (_quote(metadata), _quote(catalog.path)),
         ]),
         mnemonic = "ArchiveWineRuntime",
         execution_requirements = {"requires-darwin": "1", "no-remote": "1"},
@@ -303,6 +305,7 @@ runtime_archive = rule(
     implementation = _runtime_archive_impl,
     attrs = {
         "runtime": attr.label(mandatory = True, providers = [RuntimeBundleInfo]),
+        "app_infoplist": attr.label(mandatory = True, allow_single_file = [".plist"]),
         "version": attr.string(mandatory = True),
         "architecture": attr.string(mandatory = True, values = ["arm64", "x86_64"]),
         "release_url": attr.string(mandatory = True),

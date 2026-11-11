@@ -18,8 +18,8 @@ def checksum(file):
     return digest.hexdigest()
 
 
-def runtime_assets(catalog, repository):
-    """Require both native architectures and one immutable runtime release."""
+def runtime_assets(catalog, repository, app_version):
+    """Require both runtime architectures and URLs targeting the app release."""
     if catalog.get("schemaVersion") != 1:
         raise ValueError("Unsupported runtime catalog schema")
 
@@ -29,21 +29,21 @@ def runtime_assets(catalog, repository):
 
     versions = {item["version"] for item in packages}
     if len(versions) != 1:
-        raise ValueError("Both runtimes must belong to the same release")
-    version = versions.pop()
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError("Runtime architectures must use matching versions")
+    runtime_version = versions.pop()
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime_version):
         raise ValueError("Runtime versions must use major.minor.patch")
 
     assets = {}
     for package in packages:
-        filename = f"runtime-{version}-macos-{package['architecture']}.tar.xz"
-        expected = f"https://github.com/{repository}/releases/download/runtime-v{version}/{filename}"
+        filename = f"runtime-{runtime_version}-macos-{package['architecture']}.tar.xz"
+        expected = f"https://github.com/{repository}/releases/download/v{app_version}/{filename}"
         if package["url"] != expected:
-            raise ValueError(f"Runtime URL does not match its release: {package['url']}")
+            raise ValueError(f"Runtime URL does not target v{app_version}: {package['url']}")
         if not re.fullmatch(r"[0-9a-f]{64}", package["sha256"]):
             raise ValueError(f"Invalid SHA-256 for {filename}")
         assets[filename] = package["sha256"]
-    return f"runtime-v{version}", assets
+    return assets
 
 
 def require_checksums(directory, assets):
@@ -59,7 +59,7 @@ def stage(app, image, runtimes, output, repository):
         raise ValueError("App versions must use major.minor.patch")
 
     catalog = app / "Contents/Resources/RuntimePackages.json"
-    _, assets = runtime_assets(json.loads(catalog.read_text()), repository)
+    assets = runtime_assets(json.loads(catalog.read_text()), repository, version)
     require_checksums(runtimes, assets)
 
     # Validate the entire input set before writing a new release directory.
@@ -79,7 +79,7 @@ def verify(directory, tag, repository):
         raise ValueError("App release tags must use v<major>.<minor>.<patch>")
 
     catalog = json.loads((directory / "RuntimePackages.json").read_text())
-    runtime_tag, assets = runtime_assets(catalog, repository)
+    assets = runtime_assets(catalog, repository, tag[1:])
     require_checksums(directory, assets)
 
     # Check the artifact transfer as well as the runtime hashes pinned by the app.
@@ -92,8 +92,9 @@ def verify(directory, tag, repository):
         records[filename] = digest
     if set(records) != expected_files:
         raise ValueError("Release assets do not match the app tag and runtime catalog")
+    if {file.name for file in directory.iterdir()} != expected_files | {"SHA256SUMS"}:
+        raise ValueError("Release directory contains unexpected or missing assets")
     require_checksums(directory, records)
-    return runtime_tag
 
 
 def main():
@@ -114,7 +115,7 @@ def main():
         if args.command == "stage":
             stage(args.app, args.image, args.runtimes, args.output, args.repository)
         else:
-            print(verify(args.directory, args.tag, args.repository))
+            verify(args.directory, args.tag, args.repository)
     except (ValueError, KeyError, OSError) as error:
         parser.exit(1, f"Release verification failed: {error}\n")
 
