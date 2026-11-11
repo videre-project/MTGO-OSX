@@ -12,15 +12,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    uses: ./.github/workflows/build.yml
-    with:
-      test_intel: true
-
   release:
-    needs: build
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -28,10 +23,26 @@ jobs:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Select tested build
+        id: build
+        shell: bash
+        run: |
+          commit=$(git rev-parse HEAD)
+          run_id=$(gh run list --workflow build.yml --branch main --event push \
+            --commit "$commit" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+            printf 'No successful main build exists for %s. Complete build CI before retrying this release.\n' "$commit" >&2
+            exit 1
+          fi
+          printf 'Using build %s for commit %s.\n' "$run_id" "$commit"
+          printf 'run-id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+      - name: Download tested release assets
+        uses: actions/download-artifact@v4
         with:
           name: MTGO-macos
           path: dist
+          run-id: ${{ steps.build.outputs.run-id }}
+          github-token: ${{ github.token }}
       - name: Verify release assets
         run: python3 tools/release.py --repository "$GH_REPO" verify --directory dist --tag "$RELEASE_TAG"
       - name: Prepare release

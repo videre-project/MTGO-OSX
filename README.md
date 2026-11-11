@@ -206,7 +206,7 @@ The lifecycle test installs MTGO once, then checks cached relaunch and offline a
 
 Two observer processes check startup from Windows and macOS. A Win32 observer watches MTGO's main window and Common Language Runtime (CLR) and just-in-time (JIT) compiler modules for ten seconds, checking that both modules match the selected processor architecture. A macOS observer checks window placement, Dock ownership and the handoff from launcher progress to a visible MTGO main window. Fixtures in `tests/integration/fixtures.py` manage processes, temporary prefixes and logs; `run.py` starts the tests from Bazel.
 
-`//tests:mtgo_startup` runs the ARM64 specification; `//tests:mtgo_startup_x86_64` runs it for Intel through Rosetta. The Intel target must be selected explicitly and is added to CI for tagged releases. Real-client tests require a logged-in macOS GUI session and internet access. Fixtures use disposable prefixes, retain logs under `bazel-testlogs`, and never accept MTGO's license agreement or enter account credentials. To reuse verified Framework packages, pass `--test_env=MTGO_TEST_PACKAGE_CACHE=/path/to/cache`.
+`//tests:mtgo_startup` runs the ARM64 specification; `//tests:mtgo_startup_x86_64` runs it for Intel through Rosetta. CI selects both architectures and their corresponding Dock attention tests. Real-client tests require a logged-in macOS GUI session and internet access. Fixtures use disposable prefixes, retain logs under `bazel-testlogs`, and never accept MTGO's license agreement or enter account credentials. To reuse verified Framework packages, pass `--test_env=MTGO_TEST_PACKAGE_CACHE=/path/to/cache`.
 
 `//tests:launcher_startup` checks the native launcher window. Other targets cover behavior that can be tested separately from a full MTGO installation:
 
@@ -215,7 +215,7 @@ Two observer processes check startup from Windows and macOS. A Win32 observer wa
 | `//tests:dock_attention` | Runs a Win32 fixture that requests and stops attention, regains focus and closes its window. Native checks observe dock icon changes, animation and focus behavior after extracting a signed release archive. |
 | `//tests:dock_attention_x86_64` | The same attention check with Intel Wine through Rosetta. |
 | `//tests:settings` | Native preference panes, saved selections, icon import and reset, transition controls, and storage totals that exclude Wine links into host folders. Pane captures are retained in test outputs. |
-| `//tests:preparation` | Framework component installation for both architectures, progress after successful writes, and user-data migration, reset, conflicting stores and unavailable folders. |
+| `//tests:preparation` | Framework component installation for both architectures, progress after successful writes, graphics DLL replacement, and user-data migration, reset, conflicting stores and unavailable folders. |
 
 Attention and settings tests require a GUI session and run exclusively because they change foreground focus. Preparation tests use file fixtures without starting Wine. The real-client specification connects these checks to installation: it exercises download, extraction and NGen, starts ClickOnce with an external user-data folder, and verifies that hiding routine progress still permits setup and errors to appear.
 
@@ -225,12 +225,13 @@ Run the main CI test set locally with:
 
 ```sh
 ./bazelw test //tests:launcher_startup //tests:settings //tests:preparation \
-  //tests:mtgo_startup //tests:dock_attention
+  //tests:mtgo_startup //tests:dock_attention \
+  //tests:mtgo_startup_x86_64 //tests:dock_attention_x86_64
 ```
 
 ### CI and Incremental Builds
 
-On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) prepares an Apple SDK archive on macOS, then builds Wine and its dependencies in two parallel Linux jobs: ARM64 on `ubuntu-24.04-arm` and Intel on `ubuntu-24.04`. A macOS job imports both outputs, signs and packages the runtimes, builds the universal app and DMG, and runs the tests above. Version tags add Intel lifecycle and attention tests before release staging.
+On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) prepares an Apple SDK archive on macOS, then builds Wine and its dependencies in two parallel Linux jobs: ARM64 on `ubuntu-24.04-arm` and Intel on `ubuntu-24.04`. A macOS job imports both outputs, signs and packages the runtimes, builds the universal app and DMG, and runs the tests above for ARM64 and Intel through Rosetta before uploading release artifacts.
 
 Workflow timeouts allow 15 minutes for SDK preparation, 60 minutes for each Linux runtime build, and 45 minutes for macOS packaging and tests. Each Linux job runs one Bazel action at a time with four compiler jobs. After testing, CI uploads a DMG, runtime archives, catalog and checksums as `MTGO-macos`. Linux build logs are uploaded per architecture; macOS test logs are in `mtgo-startup-logs`.
 
@@ -265,7 +266,9 @@ This test bundle permits Rosetta. The universal distribution bundle requires nat
 
 ## Releases
 
-A push to `main` builds and tests without creating releases. Pushing an app tag such as `v0.1.0` starts the [release workflow](.github/workflows/release.yml), which runs the shared build and ARM64 and Intel lifecycle tests before preparing one draft release. It includes a DMG, both runtime archives and `RuntimePackages.json`. GitHub generates release notes for review and editing before publication.
+A push to `main` builds and tests without creating releases. After CI succeeds, pushing an app tag such as `v0.1.0` starts the [release workflow](.github/workflows/release.yml). It downloads `MTGO-macos` from a successful main-branch build of that exact commit, verifies versions and checksums, then prepares one draft release with a DMG, both runtime archives and `RuntimePackages.json`. Those files are uploaded unchanged, without rebuilding, re-signing or repeating tests. GitHub generates release notes for review and editing before publication.
+
+If no successful main-branch build exists for a tagged commit, release preparation stops. Missing or expired artifacts also stop preparation; rerun build CI for that commit before retrying Release.
 
 App tags must match `CFBundleShortVersionString` in `src/Info.plist`, which also determines runtime download URLs. Runtime archives remain versioned by `RUNTIME_VERSION` in `src/BUILD.bazel`; bump this when changing runtime contents. MTGO-OSX can reuse an installed runtime across app releases when its version and checksum match.
 

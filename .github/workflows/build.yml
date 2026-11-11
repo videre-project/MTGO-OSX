@@ -5,12 +5,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      test_intel:
-        description: Run Intel lifecycle tests through Rosetta
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -28,15 +22,6 @@ jobs:
       fingerprint: ${{ steps.sdk.outputs.fingerprint }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check release tag
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' src/Info.plist)
-          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
-            printf 'Release tag %s must match app version v%s.\n' "$GITHUB_REF_NAME" "$version" >&2
-            exit 1
-          fi
       - name: Identify Apple SDK and compiler runtime
         id: sdk
         shell: bash
@@ -272,9 +257,8 @@ jobs:
             ${{ env.MTGO_TEST_PACKAGE_CACHE }}/NDP481.exe
             ${{ env.MTGO_TEST_PACKAGE_CACHE }}/arm64/*.dll
             ${{ env.MTGO_TEST_PACKAGE_CACHE }}/x86_64/*.dll
-          key: framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}-${{ inputs.test_intel || false }}
+          key: framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}
           restore-keys: |
-            framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}-${{ inputs.test_intel || false }}-
             framework-${{ hashFiles('src/Runtime/Framework/FrameworkInstaller.swift') }}-
             framework-
       - name: Test release packaging
@@ -288,14 +272,11 @@ jobs:
       - name: Run MTGO integration tests
         id: integration-tests
         shell: bash
-        env:
-          TEST_INTEL: ${{ inputs.test_intel || false }}
         run: |
-          targets=(//tests:launcher_startup //tests:settings //tests:preparation //tests:mtgo_startup //tests:dock_attention)
-          if [[ "$TEST_INTEL" == true ]]; then
-            targets+=(//tests:mtgo_startup_x86_64 //tests:dock_attention_x86_64)
-          fi
-          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" test "${targets[@]}" \
+          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" test \
+            //tests:launcher_startup //tests:settings //tests:preparation \
+            //tests:mtgo_startup //tests:dock_attention \
+            //tests:mtgo_startup_x86_64 //tests:dock_attention_x86_64 \
             --jobs=2 --disk_cache="$BAZEL_CACHE/actions" \
             --repository_cache="$BAZEL_CACHE/repositories" \
             --sandbox_debug --nocache_test_results --test_output=errors \
