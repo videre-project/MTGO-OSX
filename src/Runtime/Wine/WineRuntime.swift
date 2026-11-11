@@ -180,7 +180,8 @@ struct WineRuntime {
     defer { try? files.removeItem(at: temporary) }
     try files.copyItem(at: direct3D9, to: temporary)
     if files.fileExists(atPath: destination.path) {
-      _ = try files.replaceItemAt(destination, withItemAt: temporary)
+      // Copying old extended attributes onto a read-only replacement can fail.
+      _ = try files.replaceItemAt(destination, withItemAt: temporary, options: .usingNewMetadataOnly)
     } else {
       try files.moveItem(at: temporary, to: destination)
     }

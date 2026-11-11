@@ -41,9 +41,11 @@ filegroup(
     srcs = [
         "ApplicationError.swift",
         "Launcher/StartupProgress.swift",
+        "Runtime/BinaryArchitecture.swift",
         "Runtime/Framework/FrameworkComponents.swift",
         "Runtime/RuntimeArchitecture.swift",
         "Runtime/Wine/WineRegistry.swift",
+        "Runtime/Wine/WineRuntime.swift",
         "Runtime/Wine/WineUserData.swift",
     ],
     visibility = ["//tests:__pkg__"],
