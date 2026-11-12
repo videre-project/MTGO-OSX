@@ -1,5 +1,27 @@
 # Wine
 
-Wine is built from the revision pinned in [`sources.lock.json`](../sources.lock.json), with dependencies and patch order declared in [`BUILD.bazel`](BUILD.bazel). ARM64 builds include AnyCPU, ARM64X and unwind fixes first used in mtgo-docker, together with macOS memory and register compatibility changes. Both architectures include window, Dock, taskbar-attention and graphics integration; see [Runtime Architecture](../../docs/runtime.md) for the corresponding launcher behavior.
+## Change the Build
 
-The default Metal app and the `MTGO_opengl` comparison app use the same Wine build. Keep each patch specific to the behavior it changes so Wine upgrades can be reviewed separately from packaging changes.
+| Change | Definition |
+| --- | --- |
+| Upstream revision and archive hash | [sources.lock.json](../sources.lock.json). |
+| Dependencies, configure options and patch order | [BUILD.bazel](BUILD.bazel). |
+| Launcher/runtime integration | [Runtime Architecture](../../docs/runtime.md#macos-integration). |
+
+## Patch Scope
+
+| Group | Architectures | Coverage |
+| --- | --- | --- |
+| `common_patches` | ARM64 and x86_64 | Window identity, Dock commands and attention, startup transitions, minimized surfaces, message queues and graphics integration. |
+| `arm64_patches` | ARM64 | AnyCPU and ARM64X loading, unwinding, PE alignment, Darwin memory layout and register compatibility. |
+
+Keep patches specific to individual behaviors and retain the order declared in `BUILD.bazel`. Common patches precede ARM64 patches.
+
+## Compare Graphics Backends
+
+| App target | Rendering |
+| --- | --- |
+| `//:MTGO` | DXVK and MoltenVK over Metal. |
+| `//:MTGO_opengl` | WineD3D over OpenGL. |
+
+Both targets use the same Wine build, allowing graphics comparisons with identical compatibility patches.

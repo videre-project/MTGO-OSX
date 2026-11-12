@@ -1,5 +1,30 @@
 # MTGOSDK Launcher
 
-The [MTGOSDK NuGet release `1.9.0.20261109`](https://www.nuget.org/packages/MTGOSDK/1.9.0.20261109) is pinned by URL and SHA-256 in [`MODULE.bazel`](../../MODULE.bazel). Building `//third_party/mtgosdk:launcher` extracts `Launcher.exe` from `MTGOSDK.dll` and `System.Deployment.dll` from that launcher. Both are copied unchanged into the app alongside license notices, so activation, update checks and progress reporting continue to use the published [MTGOSDK implementation](https://github.com/videre-project/MTGOSDK/tree/v1.9.0/MTGOSDK/lib/Launcher).
+## Build the Launcher
 
-[ExtractLauncher.cs](ExtractLauncher.cs) reads assembly metadata directly without loading the Windows-only MTGOSDK assembly or its embedded launcher on macOS. Extraction requires the .NET 10 SDK on the build host; the installed app instead runs the extracted launcher under .NET Framework in Wine.
+Requires macOS and the .NET 10 SDK. Run from the repository root:
+
+```sh
+./bazelw build //third_party/mtgosdk:launcher
+```
+
+Output: `bazel-bin/third_party/mtgosdk/launcher/`.
+
+| File | Extracted from |
+| --- | --- |
+| `Launcher.exe` | Embedded resources in `MTGOSDK.dll`. |
+| `System.Deployment.dll` | Embedded resources in `Launcher.exe`. |
+
+Both files are packaged unchanged with license notices under `Contents/Resources/Launcher`. The installed app runs them under .NET Framework in Wine.
+
+## Update the Package
+
+Update the NuGet URL and SHA-256 in [MODULE.bazel](../../MODULE.bazel). Current pin: [MTGOSDK 1.9.0.20261109](https://www.nuget.org/packages/MTGOSDK/1.9.0.20261109).
+
+| Change | File |
+| --- | --- |
+| NuGet file mapping | [NuGet.BUILD.bazel](NuGet.BUILD.bazel). |
+| Extraction and output packaging | [launcher.bzl](launcher.bzl). |
+| Embedded assembly selection | [ExtractLauncher.cs](ExtractLauncher.cs). |
+
+Extraction reads assembly metadata directly, without loading Windows assemblies on macOS. ClickOnce activation, update checks and progress reporting use the [published MTGOSDK implementation](https://github.com/videre-project/MTGOSDK/tree/v1.9.0/MTGOSDK/lib/Launcher).

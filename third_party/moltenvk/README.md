@@ -1,5 +1,23 @@
 # MoltenVK
 
-MoltenVK is built with pinned SPIRV-Cross, Vulkan-Headers and cereal sources, plus Metal translation patches declared in [`BUILD.bazel`](BUILD.bazel). A [CMake wrapper](CMakeLists.txt) passes these source directories into the build, preventing additional dependency downloads during CMake configuration.
+## Change the Build
 
-[SDK compatibility changes](patches/moltenvk-sdk14.patch) conditionally compile newer Metal and MetalFX declarations when the installed SDK provides them, and supply revision metadata for source-archive builds. Public Metal APIs are enabled with a macOS 13 deployment target. SDK availability checks permit compilation with older developer tools; they do not establish compatibility with every older macOS release.
+| Change | Definition |
+| --- | --- |
+| MoltenVK, SPIRV-Cross, Vulkan-Headers and cereal pins | [sources.lock.json](../sources.lock.json). |
+| Source directories and Metal translation patches | [BUILD.bazel](BUILD.bazel). |
+| CMake options and dependency wiring | [CMakeLists.txt](CMakeLists.txt). |
+| SDK compatibility | [moltenvk-sdk14.patch](patches/moltenvk-sdk14.patch). |
+
+Pass verified source directories through the CMake wrapper. Configuration uses these local dependencies without additional downloads.
+
+## SDK Requirements
+
+| Setting | Behavior |
+| --- | --- |
+| Deployment target | macOS 13. |
+| Metal API | Public APIs; `MVK_USE_METAL_PRIVATE_API=OFF`. |
+| Newer Metal and MetalFX declarations | Compile conditionally when available in the installed SDK. |
+| Source-archive revision metadata | Supplied by the compatibility patch. |
+
+SDK checks permit compilation with older developer tools. Runtime compatibility still requires validation on the target macOS release; see [macOS Compatibility](../../docs/runtime.md#macos-compatibility).
