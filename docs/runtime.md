@@ -6,7 +6,7 @@ Wine, .NET Framework 4.8.1 and MTGO run as ARM64 processes on Apple silicon and 
 
 ## Runtime Installation
 
-MTGO-OSX is distributed as a universal app with a `RuntimePackages.json` catalog listing download URLs and SHA-256 hashes for ARM64 and x86_64 archives. Wine, DXVK, MoltenVK, 7-Zip and dependency notices are packaged in those archives, allowing one DMG to support both architectures while downloading only the matching runtime. Each app release includes both archives and a matching catalog alongside its DMG. Archive hashes are computed during the build and pinned before publication; see [Releases](../README.md#releases).
+MTGO-OSX is distributed as a universal app with a `RuntimePackages.json` catalog listing download URLs and SHA-256 hashes for ARM64 and x86_64 archives. Wine, DXVK, MoltenVK, 7-Zip and dependency notices are packaged in those archives, allowing one DMG to support both architectures while downloading only the matching runtime. Each app release includes both archives and a matching catalog alongside its DMG. Archive hashes are computed in Build and retained when Release assigns download URLs from an app tag; see [Releases](../README.md#releases).
 
 After verifying a download, installation extracts it into a staging directory on the installation volume. A `runtime.json` manifest identifies binaries inside a nested `MTGO.app` helper bundle. Validation checks the manifest schema, Dock protocol, minimum macOS version and binary architectures, followed by a strict signature check of the helper. Cancellation is checked before placing the validated directory at `~/Library/Application Support/MTGO-OSX/Runtimes/<version>/<architecture>` and registering the helper with Launch Services. Failed validation leaves earlier releases unchanged.
 
@@ -114,7 +114,7 @@ Packaging preserves the modification time of `wine.inf`, which Wine uses to deci
 
 Wine modules in Portable Executable (PE) format use 16 KB file alignment and 64 KB section alignment on ARM64. Common Object File Format (COFF) symbol tables are removed from packaged modules to reduce size, while those symbols remain available in Wine build outputs for diagnostics.
 
-Signed runtime bundles are archived before Bazel caches directory outputs, preserving relative links and modification times across cache restoration. Release packaging copies these archives unchanged to versioned filenames and records SHA-256 checksums in catalog entries.
+Signed runtime bundles are archived before Bazel caches directory outputs, preserving relative links and modification times across cache restoration. Build copies these archives to versioned filenames and records SHA-256 checksums in catalog entries. Release updates app metadata and download URLs while retaining runtime archives and their hashes.
 
 ### ARM64 Compatibility
 

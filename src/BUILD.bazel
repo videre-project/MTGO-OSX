@@ -101,7 +101,6 @@ runtime_archive(
     runtime = ":runtime",
     version = RUNTIME_VERSION,
     architecture = "arm64",
-    app_infoplist = "Info.plist",
     release_url = RELEASE_URL,
     visibility = ["//visibility:public"],
 )
@@ -129,7 +128,6 @@ runtime_archive(
     runtime = ":runtime_intel",
     version = RUNTIME_VERSION,
     architecture = "x86_64",
-    app_infoplist = "Info.plist",
     release_url = RELEASE_URL,
     visibility = ["//visibility:public"],
 )

@@ -11,6 +11,9 @@ MacOSApplicationInfo = provider(fields = ["bundle"])
 RuntimeBundleInfo = provider(fields = ["archive"])
 RuntimeArchiveInfo = provider(fields = ["archive", "catalog"])
 
+# Build uses a development version; Release stamps the selected tag before signing.
+DEVELOPMENT_VERSION = "0.0.0"
+
 def _quote(value):
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -60,6 +63,8 @@ def _macos_application_impl(ctx):
         "mkdir -p %s/Contents/MacOS %s/Contents/Resources" % (_quote(bundle.path), _quote(bundle.path)),
         "cp %s %s/Contents/MacOS/MTGO" % (_quote(binary.path), _quote(bundle.path)),
         "cp %s %s/Contents/Info.plist" % (_quote(ctx.file.infoplist.path), _quote(bundle.path)),
+        "/usr/bin/plutil -insert CFBundleShortVersionString -string %s %s/Contents/Info.plist" % (_quote(DEVELOPMENT_VERSION), _quote(bundle.path)),
+        "/usr/bin/plutil -insert CFBundleVersion -string 0 %s/Contents/Info.plist" % _quote(bundle.path),
         "/usr/bin/plutil -lint %s/Contents/Info.plist" % _quote(bundle.path),
         "printf APPL'????' > %s/Contents/PkgInfo" % _quote(bundle.path),
         "cp %s %s/Contents/Resources/RuntimePackages.json" % (_quote(ctx.file.runtime_catalog.path), _quote(bundle.path)),
@@ -135,6 +140,22 @@ def _macos_dmg_impl(ctx):
     )
     image = ctx.actions.declare_file(ctx.label.name + ".dmg")
     wheels = [file for file in ctx.files._wheels if file.basename == "source.archive"]
+
+    # Release can create a DMG from these inputs without running Bazel or Swift.
+    packaging = ctx.actions.declare_directory(ctx.label.name + ".inputs")
+    commands = [
+        "set -eu",
+        "mkdir -p %s/wheels" % _quote(packaging.path),
+        "cp %s/background.tiff %s/layout.json %s/" % (_quote(artwork.path), _quote(artwork.path), _quote(packaging.path)),
+    ]
+    for index, wheel in enumerate(wheels):
+        commands.append("cp %s %s/wheels/%d.whl" % (_quote(wheel.path), _quote(packaging.path), index))
+    ctx.actions.run_shell(
+        inputs = [artwork] + wheels,
+        outputs = [packaging],
+        command = "\n".join(commands),
+        mnemonic = "PrepareDiskImageInputs",
+    )
     args = ctx.actions.args()
     args.add(ctx.file._builder.path)
     args.add("--app", app.path)
@@ -151,7 +172,10 @@ def _macos_dmg_impl(ctx):
         # DiskImages needs the host service; it cannot operate inside sandbox-exec.
         execution_requirements = {"requires-darwin": "1", "no-remote": "1", "no-sandbox": "1"},
     )
-    return [DefaultInfo(files = depset([image]))]
+    return [
+        DefaultInfo(files = depset([image])),
+        OutputGroupInfo(release_inputs = depset([packaging])),
+    ]
 
 macos_dmg = rule(
     implementation = _macos_dmg_impl,
@@ -276,20 +300,18 @@ def _runtime_archive_impl(ctx):
         "packages": [{
             "version": ctx.attr.version,
             "architecture": ctx.attr.architecture,
-            "url": ctx.attr.release_url.rstrip("/") + "/v@APP_VERSION@/" + filename,
+            "url": ctx.attr.release_url.rstrip("/") + "/v" + DEVELOPMENT_VERSION + "/" + filename,
             "sha256": "@SHA256@",
         }],
     })
     ctx.actions.run_shell(
-        inputs = [runtime, ctx.file.app_infoplist],
+        inputs = [runtime],
         outputs = [archive, catalog],
         command = "\n".join([
             "set -eu",
-            "app_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' %s)" % _quote(ctx.file.app_infoplist.path),
-            "printf '%s\\n' \"$app_version\" | /usr/bin/grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+$'",
             "cp %s %s" % (_quote(runtime.path), _quote(archive.path)),
             "checksum=$(/usr/bin/shasum -a 256 %s | /usr/bin/cut -d ' ' -f 1)" % _quote(archive.path),
-            "printf '%%s\n' %s | /usr/bin/sed \"s/@SHA256@/$checksum/;s/@APP_VERSION@/$app_version/\" > %s" % (_quote(metadata), _quote(catalog.path)),
+            "printf '%%s\n' %s | /usr/bin/sed \"s/@SHA256@/$checksum/\" > %s" % (_quote(metadata), _quote(catalog.path)),
         ]),
         mnemonic = "ArchiveWineRuntime",
         execution_requirements = {"requires-darwin": "1", "no-remote": "1"},
@@ -304,7 +326,6 @@ runtime_archive = rule(
     implementation = _runtime_archive_impl,
     attrs = {
         "runtime": attr.label(mandatory = True, providers = [RuntimeBundleInfo]),
-        "app_infoplist": attr.label(mandatory = True, allow_single_file = [".plist"]),
         "version": attr.string(mandatory = True),
         "architecture": attr.string(mandatory = True, values = ["arm64", "x86_64"]),
         "release_url": attr.string(mandatory = True),

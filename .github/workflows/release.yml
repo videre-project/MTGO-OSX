@@ -11,40 +11,92 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  RELEASE_TAG: ${{ github.ref_name }}
+
 jobs:
-  release:
+  build:
+    name: Select build
     runs-on: ubuntu-latest
     permissions:
       actions: read
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: ${{ github.ref_name }}
+      checks: read
+      contents: read
+    outputs:
+      run-id: ${{ steps.build.outputs.run-id }}
     steps:
       - uses: actions/checkout@v4
       - name: Select build
         id: build
         shell: bash
         run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Release tags must use v<major>.<minor>.<patch>.' >&2; exit 1; }
           commit=$(git rev-parse HEAD)
           run_id=$(gh run list --workflow build.yml --branch main --event push \
-            --commit "$commit" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+            --commit "$commit" --limit 1 --json databaseId --jq '.[0].databaseId')
           if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
-            printf 'No successful main build exists for %s. Complete build CI before retrying this release.\n' "$commit" >&2
+            printf 'No main build exists for %s. Push the release commit to main before retrying this release.\n' "$commit" >&2
             exit 1
           fi
           printf 'Using build %s for commit %s.\n' "$run_id" "$commit"
+          gh run watch "$run_id" --exit-status --interval 30
           printf 'run-id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: Sign and package on macOS
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: MTGO-macos
-          path: dist
-          run-id: ${{ steps.build.outputs.run-id }}
+          path: build
+          run-id: ${{ needs.build.outputs.run-id }}
           github-token: ${{ github.token }}
+      - name: Package release
+        run: |
+          python3 tools/release.py --repository "$GH_REPO" package \
+            --directory build --tag "$RELEASE_TAG" --build-number "$GITHUB_RUN_NUMBER" --output dist
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: MTGO-release
+          path: dist/
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    name: Prepare draft release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: MTGO-release
+          path: dist
       - name: Verify release assets
         run: python3 tools/release.py --repository "$GH_REPO" verify --directory dist --tag "$RELEASE_TAG"
+      - name: Attest release assets
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/MTGO-*.dmg
+            dist/runtime-*.tar.xz
+            dist/RuntimePackages.json
       - name: Prepare release
         shell: bash
         run: |

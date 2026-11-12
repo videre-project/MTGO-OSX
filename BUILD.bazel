@@ -13,3 +13,9 @@ macos_dmg(
     artwork = "//src:Resources/DMG-Background.png",
     renderer = "//tools:dmg_artwork",
 )
+
+filegroup(
+    name = "dmg_inputs",
+    srcs = [":dmg"],
+    output_group = "release_inputs",
+)

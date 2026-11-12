@@ -21,7 +21,7 @@ MTGO runs under Wine with .NET Framework 4.8.1 natively on both Intel and Apple 
 
 ## Build and Run
 
-To build MTGO-OSX, we recommend an Apple silicon Mac with Apple's Command Line Tools or Xcode, .NET 10 SDK and Rosetta installed. Bazel builds a universal app and separate Wine runtimes for ARM64 and x86_64, then records runtime download URLs and hashes in the app. Local Intel source builds use Rosetta; [Linux Runtime Builds](#linux-runtime-builds) explains how to compile both runtimes with Docker instead as we use in GitHub Actions CI.
+To build MTGO-OSX, we recommend an Apple silicon Mac with Apple's Command Line Tools or Xcode, .NET 10 SDK and Rosetta installed. Bazel builds a universal app and separate Wine runtimes for ARM64 and x86_64. Local Intel source builds use Rosetta; [Linux Runtime Builds](#linux-runtime-builds) explains how to compile both runtimes with Docker instead as we use in GitHub Actions CI.
 
 MTGO-OSX requires macOS 13 (Ventura) or later; see [macOS Compatibility](docs/runtime.md#macos-compatibility).
 
@@ -37,7 +37,7 @@ Bazel writes `bazel-bin/src/MTGO.app` and `bazel-bin/dmg.dmg`. MTGO-OSX includes
 
 For local development, `MTGO_RUNTIME_ROOT` selects a runtime extracted from a release archive, as shown above. Extracting an archive preserves Wine’s relative symlinks across Bazel cache restoration. Integration tests download runtime archives from a local HTTP server, so development and testing can proceed before publishing GitHub release assets.
 
-Build `//:runtime_arm64` and `//:runtime_x86_64` to produce `bazel-bin/src/runtime-0.1.0-macos-<architecture>.tar.xz`. During app packaging, Bazel writes download URLs and SHA-256 hashes for these archives to `Contents/Resources/RuntimePackages.json`. Each GitHub release includes these archives and a matching DMG; see [Releases](#releases).
+Build `//:runtime_arm64` and `//:runtime_x86_64` to produce `bazel-bin/src/runtime-0.1.0-macos-<architecture>.tar.xz`. Bazel records archive hashes in `Contents/Resources/RuntimePackages.json`; Release assigns download URLs from a Git tag before signing the app. Each GitHub release includes these archives and a matching DMG; see [Releases](#releases).
 
 The DMG opens in Finder with MTGO and an Applications shortcut over a Retina background matching the launcher. Artwork and Finder metadata are generated from pinned `dmgbuild` dependencies without Finder automation. Builds are ad-hoc signed; distribution signing and notarization remain separate release work.
 
@@ -246,7 +246,7 @@ Run the main CI test set locally with:
 
 ### CI and Incremental Builds
 
-On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) prepares an Apple SDK archive on macOS, then builds Wine and its dependencies in two parallel Linux jobs: ARM64 on `ubuntu-24.04-arm` and Intel on `ubuntu-24.04`. A macOS job imports both outputs, signs and packages the runtimes, builds the universal app and DMG, and runs the tests above for ARM64 and Intel through Rosetta before uploading release artifacts.
+On pushes to `main` and pull requests, the [build workflow](.github/workflows/build.yml) prepares an Apple SDK archive on macOS, then builds Wine and its dependencies in two parallel Linux jobs: ARM64 on `ubuntu-24.04-arm` and Intel on `ubuntu-24.04`. A macOS job imports both outputs, signs and packages the runtimes, builds a universal app and DMG packaging inputs, and runs the tests above for ARM64 and Intel through Rosetta before archiving app bundles, runtime archives and packaging resources.
 
 Workflow timeouts allow 15 minutes for SDK preparation, 60 minutes for each Linux runtime build, and 45 minutes for macOS packaging and tests. Each Linux job runs one Bazel action at a time with four compiler jobs. After testing, CI uploads a DMG, runtime archives, catalog and checksums as `MTGO-macos`. Linux build logs are uploaded per architecture; macOS test logs are in `mtgo-startup-logs`.
 
@@ -281,23 +281,29 @@ This test bundle permits Rosetta. The universal distribution bundle requires nat
 
 ## Releases
 
-A push to `main` builds and tests without creating releases. After CI succeeds, pushing an app tag such as `v0.1.0` starts the [release workflow](.github/workflows/release.yml). It downloads `MTGO-macos` from a successful main-branch build of that exact commit, verifies versions and checksums, then prepares one draft release with a DMG, both runtime archives and `RuntimePackages.json`. Those files are uploaded unchanged, without rebuilding, re-signing or repeating tests. Draft notes begin with a [download table](.github/release-notes.md), followed by GitHub's generated changelog.
+A push to `main` compiles the app and runtimes and runs integration tests for ARM64 and Intel. After those checks pass, Build uploads `MTGO-macos` with an app bundle archive, both runtime archives, and DMG artwork, Finder metadata and pinned packaging dependencies. A `SHA256SUMS` manifest covers every file transferred to Release.
 
-If no successful main-branch build exists for a tagged commit, release preparation stops. Missing or expired artifacts also stop preparation; rerun build CI for that commit before retrying Release.
+Pushing an app tag such as `v0.1.1` starts the [release workflow](.github/workflows/release.yml). It selects a main-branch build for that exact commit and waits if the build is still running. A missing or failed build stops release preparation, as do missing, expired or altered artifacts.
 
-App tags must match `CFBundleShortVersionString` in `src/Info.plist`, which also determines runtime download URLs. Runtime archives remain versioned by `RUNTIME_VERSION` in `src/BUILD.bazel`; bump this when changing runtime contents. MTGO-OSX can reuse an installed runtime across app releases when its version and checksum match.
+On macOS, Release extracts the app into a working directory and sets `CFBundleShortVersionString` from the tag and `CFBundleVersion` from its workflow run number. It also updates runtime download URLs in `RuntimePackages.json`, retaining runtime versions, archive bytes and SHA-256 hashes. After signing the app and creating a DMG, checksum and signature checks verify final packaging. Compilation and MTGO integration tests run in Build.
 
-Publishing a draft makes the DMG and runtime assets available together. Rerunning the workflow can refresh draft assets while preserving edited notes; published releases cannot be replaced. GitHub provides SHA-256 digests for uploaded assets. An internal `SHA256SUMS` file verifies files transferred between CI jobs and stays in CI artifacts.
+Publication proceeds on Linux, with [artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations) generated for final DMG, runtime and catalog digests. One draft release includes those four assets. Draft notes begin with a [download table](.github/release-notes.md), followed by GitHub's generated changelog; reruns preserve edited notes while refreshing assets. Published releases cannot be replaced.
 
-Release packaging can also be verified locally:
+`src/Info.plist` contains app metadata without a release version. Local and CI bundles use `0.0.0` and build `0` until release packaging applies a tag. Runtime archives remain versioned by `RUNTIME_VERSION` in `src/BUILD.bazel`; change this when modifying runtime contents. Installed runtimes can be reused across app releases when their version and checksum match.
+
+GitHub provides SHA-256 digests for uploaded assets. `SHA256SUMS` remains inside CI artifacts to verify transfers between Build, macOS packaging and publication jobs.
+
+Release packaging can also be run locally:
 
 ```sh
 python3 -m unittest discover -s tests -p release_test.py -v
-python3 tools/release.py stage --output dist
-python3 tools/release.py verify --directory dist --tag v0.1.0
+./bazelw build //:MTGO //:dmg_inputs //:runtime_arm64 //:runtime_x86_64
+python3 tools/release.py stage --output dist/build
+python3 tools/release.py package --directory dist/build --tag v0.1.1 --build-number 1 --output dist/release
+python3 tools/release.py verify --directory dist/release --tag v0.1.1
 ```
 
-Use a new output directory for each staging run so earlier release assets cannot be included accidentally. Signing/notarization and updating the macOS app itself remain separate work; MTGO updates continue through the SDK's ClickOnce launcher.
+Use new output directories for each staging and packaging run. Release packaging currently uses ad-hoc signing; Developer ID signing, notarization and automatic MTGO-OSX updates remain separate work. MTGO updates continue through the SDK's ClickOnce launcher.
 
 ## License
 

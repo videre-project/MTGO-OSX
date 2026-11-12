@@ -263,10 +263,10 @@ jobs:
             framework-
       - name: Test release packaging
         run: python3 -m unittest discover -s tests -p release_test.py -v
-      - name: Build app, DMG and signed runtimes
+      - name: Build app, signed runtimes and DMG inputs
         id: macos-build
         run: |
-          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" build //:MTGO //:dmg //:runtime_arm64 //:runtime_x86_64 \
+          ./bazelw --output_base="$BAZEL_OUTPUT_BASE" build //:MTGO //:dmg_inputs //:runtime_arm64 //:runtime_x86_64 \
             --jobs=2 --disk_cache="$BAZEL_CACHE/actions" \
             --repository_cache="$BAZEL_CACHE/repositories" --sandbox_debug
       - name: Run MTGO integration tests
@@ -281,7 +281,7 @@ jobs:
             --repository_cache="$BAZEL_CACHE/repositories" \
             --sandbox_debug --nocache_test_results --test_output=errors \
             --test_env=MTGO_TEST_PACKAGE_CACHE
-      - name: Stage release assets
+      - name: Archive release inputs
         run: python3 tools/release.py stage --output dist
       - name: Upload app and runtime archives
         uses: actions/upload-artifact@v4
