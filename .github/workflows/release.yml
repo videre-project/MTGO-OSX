@@ -23,7 +23,7 @@ jobs:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
-      - name: Select tested build
+      - name: Select build
         id: build
         shell: bash
         run: |
@@ -36,7 +36,7 @@ jobs:
           fi
           printf 'Using build %s for commit %s.\n' "$run_id" "$commit"
           printf 'run-id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
-      - name: Download tested release assets
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: MTGO-macos
@@ -51,8 +51,10 @@ jobs:
           if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
             test "$draft" = true || { echo 'Published releases cannot be replaced.' >&2; exit 1; }
           else
+            sed -e "s|@VERSION@|${RELEASE_TAG#v}|g" -e "s|@REPOSITORY@|$GH_REPO|g" \
+              .github/release-notes.md > "$RUNNER_TEMP/release-notes.md"
             gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes \
-              --title "MTGO ${RELEASE_TAG#v}"
+              --notes-file "$RUNNER_TEMP/release-notes.md" --title "MTGO ${RELEASE_TAG#v}"
           fi
           gh release upload "$RELEASE_TAG" "dist/MTGO-${RELEASE_TAG#v}.dmg" \
             dist/runtime-*.tar.xz dist/RuntimePackages.json --clobber
