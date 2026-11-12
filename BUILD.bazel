@@ -10,7 +10,6 @@ alias(name = "MTGO_opengl", actual = "//src:MTGO_opengl", tags = ["manual"])
 macos_dmg(
     name = "dmg",
     app = "//src:MTGO",
-    artwork = "//src:Resources/MTGO-Background.jpg",
-    font = "//src:Resources/Fonts/Inter.ttf",
+    artwork = "//src:Resources/DMG-Background.png",
     renderer = "//tools:dmg_artwork",
 )

@@ -89,7 +89,7 @@ The ClickOnce launcher comes from a published MTGOSDK NuGet package, pinned by v
 | App contents, signatures and runtime packaging | [macos.bzl](tools/macos.bzl), [sign_runtime.py](tools/sign_runtime.py) |
 | Linux build jobs and incremental caches | [build.yml](.github/workflows/build.yml), [Dockerfile](tools/linux/Dockerfile) |
 | Imported Wine archives | [native_artifacts.bzl](tools/native_artifacts.bzl), [native.bzl](third_party/native.bzl) |
-| DMG artwork and Finder layout | [dmg.swift](tools/dmg.swift), [dmg.py](tools/dmg.py) |
+| DMG artwork and Finder layout | [DMG-Background.png](src/Resources/DMG-Background.png), [dmg.swift](tools/dmg.swift), [dmg.py](tools/dmg.py) |
 
 Application and runtime changes can be built separately. DXVK D3D9 binaries are downloaded from a pinned MetalSharp release, with ARM64X and Intel packages selected for the corresponding runtime. Updating DXVK repackages the runtime without rebuilding Wine. MTGO-OSX's default Metal app and an optional OpenGL comparison app use the same Wine build, allowing both rendering paths to be tested with the same compatibility patches.
 

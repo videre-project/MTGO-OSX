@@ -3,7 +3,7 @@ load("//tools:macos.bzl", "macos_application", "runtime_archive", "runtime_bundl
 RUNTIME_VERSION = "0.1.0"
 RELEASE_URL = "https://github.com/videre-project/MTGO-OSX/releases/download"
 
-exports_files(["Resources/MTGO-Background.jpg", "Resources/Fonts/Inter.ttf"])
+exports_files(["Resources/DMG-Background.png", "Resources/MTGO-Background.jpg", "Resources/Fonts/Inter.ttf"])
 
 filegroup(
     name = "dock_sources",

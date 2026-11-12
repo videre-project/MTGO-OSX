@@ -127,8 +127,8 @@ def _macos_dmg_impl(ctx):
     artwork = ctx.actions.declare_directory(ctx.label.name + ".artwork")
     ctx.actions.run(
         executable = ctx.executable.renderer,
-        arguments = [ctx.file.artwork.path, ctx.file.font.path, artwork.path],
-        inputs = [ctx.file.artwork, ctx.file.font],
+        arguments = [ctx.file.artwork.path, artwork.path],
+        inputs = [ctx.file.artwork],
         outputs = [artwork],
         mnemonic = "DrawDiskImageArtwork",
         execution_requirements = {"requires-darwin": "1", "no-remote": "1"},
@@ -157,8 +157,7 @@ macos_dmg = rule(
     implementation = _macos_dmg_impl,
     attrs = {
         "app": attr.label(mandatory = True, providers = [MacOSApplicationInfo]),
-        "artwork": attr.label(mandatory = True, allow_single_file = [".jpg"]),
-        "font": attr.label(mandatory = True, allow_single_file = [".ttf"]),
+        "artwork": attr.label(mandatory = True, allow_single_file = [".png"]),
         "renderer": attr.label(mandatory = True, executable = True, cfg = "exec"),
         "_builder": attr.label(default = "//tools:dmg.py", allow_single_file = [".py"]),
         "_wheels": attr.label_list(default = [
