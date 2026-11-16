@@ -35,7 +35,7 @@ def main():
         icon=str(app / "Contents/Resources/GameIcon.icns"),
         background=str(artwork / "background.tiff"),
     )
-    build_dmg(str(args.output.resolve()), "MTGO", settings=settings)
+    build_dmg(str(args.output.resolve()), "MTGO-OSX", settings=settings)
     subprocess.run(["/usr/bin/hdiutil", "verify", "-quiet", str(args.output)], check=True)
 
 

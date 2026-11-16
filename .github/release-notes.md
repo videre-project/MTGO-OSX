@@ -2,7 +2,7 @@
 
 | ARM64 and x86_64 | Requirements |
 | --- | --- |
-| **[MTGO @VERSION@ (.dmg)](https://github.com/@REPOSITORY@/releases/download/v@VERSION@/MTGO-@VERSION@.dmg)** | macOS 13 (Ventura) or later |
+| **[MTGO-OSX v@VERSION@ (.dmg)](https://github.com/@REPOSITORY@/releases/download/v@VERSION@/MTGO-OSX-@VERSION@.dmg)** | macOS 13 (Ventura) or later |
 
 ## Installation
 

@@ -185,7 +185,7 @@ def package(directory, tag, build_number, output, repository, identity="-"):
         release = work / "release"
         release.mkdir()
         command = [sys.executable, str(Path(__file__).with_name("dmg.py")), "--app", str(app),
-                   "--artwork", str(directory / "dmg"), "--output", str(release / f"MTGO-{version}.dmg")]
+                   "--artwork", str(directory / "dmg"), "--output", str(release / f"MTGO-OSX-{version}.dmg")]
         for wheel in sorted((directory / "dmg/wheels").glob("*.whl")):
             command.extend(["--wheel", str(wheel)])
         subprocess.run(command, check=True)
@@ -201,7 +201,7 @@ def verify(directory, tag, repository):
     version = release_version(tag)
     catalog = json.loads((directory / "RuntimePackages.json").read_text())
     assets = runtime_assets(catalog, repository, version)
-    verify_checksums(directory, set(assets) | {f"MTGO-{version}.dmg", "RuntimePackages.json"})
+    verify_checksums(directory, set(assets) | {f"MTGO-OSX-{version}.dmg", "RuntimePackages.json"})
     require_checksums(directory, assets)
 
 

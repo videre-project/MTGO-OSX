@@ -13,7 +13,7 @@ MTGO runs under Wine with .NET Framework 4.8.1 natively on both Intel and Apple 
 
 | Download | Requirements |
 | --- | --- |
-| **[Download MTGO](https://github.com/videre-project/MTGO-OSX/releases/latest)** | macOS 13 (Ventura) or later |
+| **[Download MTGO-OSX](https://github.com/videre-project/MTGO-OSX/releases/latest)** | macOS 13 (Ventura) or later |
 
 1. Download the DMG, open it and drag **MTGO** to **Applications**.
 2. Open **MTGO** from **Applications**.

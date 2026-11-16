@@ -94,7 +94,7 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-path: |
-            dist/MTGO-*.dmg
+            dist/MTGO-OSX-*.dmg
             dist/runtime-*.tar.xz
             dist/RuntimePackages.json
       - name: Prepare release
@@ -102,11 +102,12 @@ jobs:
         run: |
           if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
             test "$draft" = true || { echo 'Published releases cannot be replaced.' >&2; exit 1; }
+            gh release edit "$RELEASE_TAG" --title "MTGO-OSX $RELEASE_TAG"
           else
             sed -e "s|@VERSION@|${RELEASE_TAG#v}|g" -e "s|@REPOSITORY@|$GH_REPO|g" \
               .github/release-notes.md > "$RUNNER_TEMP/release-notes.md"
             gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes \
-              --notes-file "$RUNNER_TEMP/release-notes.md" --title "MTGO ${RELEASE_TAG#v}"
+              --notes-file "$RUNNER_TEMP/release-notes.md" --title "MTGO-OSX $RELEASE_TAG"
           fi
-          gh release upload "$RELEASE_TAG" "dist/MTGO-${RELEASE_TAG#v}.dmg" \
+          gh release upload "$RELEASE_TAG" "dist/MTGO-OSX-${RELEASE_TAG#v}.dmg" \
             dist/runtime-*.tar.xz dist/RuntimePackages.json --clobber

@@ -22,6 +22,8 @@ Draft notes include a [download table](../.github/release-notes.md) and GitHub's
 | Build number (`CFBundleVersion`) | Release workflow run number. |
 | Runtime version | `RUNTIME_VERSION` in [src/BUILD.bazel](../src/BUILD.bazel); update when runtime contents change. |
 | Development version | `0.0.0`, build `0`. |
+| Release title | `MTGO-OSX v<major>.<minor>.<patch>`. |
+| DMG volume | `MTGO-OSX`, containing `MTGO.app`. |
 
 Set app versions through tags, without editing `src/Info.plist`. Changing an app version retains runtime archives and their hashes.
 
@@ -33,7 +35,7 @@ Set app versions through tags, without editing `src/Info.plist`. Changing an app
 | Sign and package | macOS | Verify inputs, stamp app metadata and runtime URLs, sign the app and create a DMG. |
 | Prepare draft release | Linux | Verify final checksums, generate attestations and upload draft assets. |
 
-- **Downloads:** one DMG, ARM64 and Intel runtime archives, and `RuntimePackages.json`.
+- **Downloads:** `MTGO-OSX-<version>.dmg`, ARM64 and Intel runtime archives, and `RuntimePackages.json`.
 - **Verification:** GitHub digests and attestations for final assets; `SHA256SUMS` for CI transfers.
 - **Signing:** ad-hoc. Developer ID signing and notarization are not configured.
 

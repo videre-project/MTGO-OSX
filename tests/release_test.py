@@ -64,7 +64,7 @@ class ReleasePackagingTests(unittest.TestCase):
         stamp(self.app, "v1.2.3", "42", self.repository)
         release = self.root / "release"
         release.mkdir()
-        (release / "MTGO-1.2.3.dmg").write_bytes(b"Final signed app disk image")
+        (release / "MTGO-OSX-1.2.3.dmg").write_bytes(b"Final signed app disk image")
         (release / "RuntimePackages.json").write_bytes((self.resources / "RuntimePackages.json").read_bytes())
         for archive in self.root.glob("runtime-*.tar.xz"):
             (release / archive.name).write_bytes(archive.read_bytes())
@@ -162,7 +162,7 @@ class ReleasePackagingTests(unittest.TestCase):
         release = self.create_release()
         verify(release, "v1.2.3", self.repository)
         self.assertEqual({file.name for file in release.iterdir()}, {
-            "MTGO-1.2.3.dmg", "RuntimePackages.json", "SHA256SUMS",
+            "MTGO-OSX-1.2.3.dmg", "RuntimePackages.json", "SHA256SUMS",
             "runtime-0.4.0-macos-arm64.tar.xz", "runtime-0.4.0-macos-x86_64.tar.xz",
         })
         for archive in self.root.glob("runtime-*.tar.xz"):
@@ -173,7 +173,7 @@ class ReleasePackagingTests(unittest.TestCase):
     def test_unlisted_or_unexpected_assets_cannot_be_published(self):
         """Adding a checksum does not make an unrelated DMG a release asset."""
         release = self.create_release()
-        extra = release / "MTGO-9.9.9.dmg"
+        extra = release / "MTGO-OSX-9.9.9.dmg"
         extra.write_bytes(b"An unrelated app")
         with self.assertRaisesRegex(ValueError, "unexpected or missing assets"):
             verify(release, "v1.2.3", self.repository)
