@@ -32,6 +32,12 @@
     "sha256": "7dedbe9d9f207a0ba83d9598019e85971490f680a80a3a24449404f050d886d9",
     "revision": "3ea3a14941b6a122b892c84141ce9662c008081e"
   },
+  "wine_patches": {
+    "url": "https://github.com/videre-project/mtgo-docker/archive/232b023e652af4e05d3c9f8dfe102ec20915a88f.tar.gz",
+    "sha256": "513d9d0ecfecf82f8857ad84976d903bb2cd773cf9a09e280ad7fdd57de1b360",
+    "revision": "232b023e652af4e05d3c9f8dfe102ec20915a88f",
+    "strip_prefix": "mtgo-docker-232b023e652af4e05d3c9f8dfe102ec20915a88f/patches"
+  },
   "llvm_mingw": {
     "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-macos-universal.tar.xz",
     "sha256": "66cbd5178c4a71b0d473e68ede172f8eb7d15d023e67f39201d0a69e21f6bf3c"

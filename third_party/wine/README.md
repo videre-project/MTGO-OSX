@@ -4,7 +4,7 @@
 
 | Change | Definition |
 | --- | --- |
-| Upstream revision and archive hash | [sources.lock.json](../sources.lock.json). |
+| Wine source and shared patch pins | [sources.lock.json](../sources.lock.json). |
 | Dependencies, configure options and patch order | [BUILD.bazel](BUILD.bazel). |
 | Launcher/runtime integration | [Runtime Architecture](../../docs/runtime.md#macos-integration). |
 
@@ -14,6 +14,8 @@
 | --- | --- | --- |
 | `common_patches` | ARM64 and x86_64 | Window identity, Dock commands and attention, startup transitions, minimized surfaces, message queues and graphics integration. |
 | `arm64_patches` | ARM64 | AnyCPU and ARM64X loading, unwinding, PE alignment, Darwin memory layout and register compatibility. |
+
+AnyCPU, ARM64X and unwind fixes come from [`mtgo-docker/patches/`](https://github.com/videre-project/mtgo-docker/tree/main/patches), pinned by revision and SHA256 in `sources.lock.json`. macOS integration patches remain under `patches/`.
 
 Keep patches specific to individual behaviors and retain the order declared in `BUILD.bazel`. Common patches precede ARM64 patches.
 

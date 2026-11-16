@@ -20,6 +20,7 @@ use_repo(
     "mtgo_nettle",
     "mtgo_pkgconf",
     "mtgo_wine",
+    "mtgo_wine_patches",
     "mtgo_llvm_mingw",
     "mtgo_llvm_mingw_linux_arm64",
     "mtgo_llvm_mingw_linux_x86_64",

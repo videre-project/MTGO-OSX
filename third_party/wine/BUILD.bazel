@@ -2,9 +2,9 @@ load("//third_party:native.bzl", "native_archive", "native_library")
 load("@native_artifacts//:configuration.bzl", "USE_IMPORTED_WINE")
 
 arm64_patches = [
-    "patches/anycpu-arm64.patch",
-    "patches/arm64x-native.patch",
-    "patches/arm64-unwind.patch",
+    "@mtgo_wine_patches//:anycpu-arm64.patch",
+    "@mtgo_wine_patches//:arm64x-native.patch",
+    "@mtgo_wine_patches//:arm64-unwind.patch",
     "patches/macos-arm64-loader.patch",
     "patches/macos-file-alignment.patch",
     "patches/darwin-arm64-compat.patch",
