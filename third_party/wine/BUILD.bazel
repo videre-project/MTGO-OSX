@@ -8,6 +8,7 @@ arm64_patches = [
     "patches/macos-arm64-loader.patch",
     "patches/macos-file-alignment.patch",
     "patches/darwin-arm64-compat.patch",
+    "patches/darwin-arm64-pages.patch",
 ]
 
 common_patches = [

@@ -127,6 +127,7 @@ class MTGORuntimeTests(unittest.TestCase):
             "-showStartupProgress", "NO", "-userDataFolder", str(runtime.user_data),
         ), observe_game=True) as client:
             runtime.require_stable_mtgo(client)
+            self.assert_recommitted_pages_are_zeroed(client)
             reports = client.progress()
 
             self.assert_progress_order(reports, (
@@ -148,6 +149,14 @@ class MTGORuntimeTests(unittest.TestCase):
             # MTGO must be visible after setup progress closes, with one shared Dock entry.
             client.require_native_handoff()
             return next(report["version"] for report in reversed(reports) if report.get("version"))
+
+    def assert_recommitted_pages_are_zeroed(self, client):
+        """Decommitting Windows pages must preserve adjacent data and protections."""
+        runtime = self.runtime
+        log = client.logs / "memory-pages.log"
+        result = runtime.run(runtime.wine, runtime.win32_observer, "--memory",
+                             environment=client.environment, timeout=30, check=False, log=log)
+        self.assertEqual(result.returncode, 0, log.read_text(errors="replace"))
 
     def assert_current_deployment_relaunches_without_installation(self, api):
         """A matching API version must skip installation and preserve a migrated desktop."""

@@ -1,4 +1,4 @@
-/* Observe real MTGO startup using Win32 APIs in its Wine prefix.
+/* Observe real MTGO startup and page-memory behavior through Win32 APIs.
  * Installation consent is restricted to the official deployment prompt.
  * No input is sent to the game's EULA or login screen.
  */
@@ -24,6 +24,71 @@ static void message(const char *text)
 {
     DWORD written;
     WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), text, lstrlenA(text), &written, NULL);
+}
+
+static BOOL check_page_recommit(void)
+{
+    static const struct { DWORD offset, size; } ranges[] = {
+        {0, 4096}, {4096, 4096}, {8192, 4096}, {12288, 4096},
+        {4096, 8192}, {4096, 40960}, {0, 16384}, {0, 65536},
+    };
+    static const DWORD protections[] = {PAGE_READWRITE, PAGE_READONLY, PAGE_NOACCESS};
+    DWORD range, protection, offset, previous;
+    char output[256];
+
+    for (protection = 0; protection < ARRAYSIZE(protections); ++protection)
+        for (range = 0; range < ARRAYSIZE(ranges); ++range)
+        {
+            BYTE *memory = VirtualAlloc(NULL, 65536, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            BYTE *part;
+            MEMORY_BASIC_INFORMATION info;
+            BOOL valid = FALSE;
+            if (!memory) { message("FAIL: Could not allocate the memory test region.\n"); return FALSE; }
+            part = memory + ranges[range].offset;
+            for (offset = 0; offset < 65536; ++offset) memory[offset] = 0x80 + offset / 4096;
+
+            /* Decommit a Windows page while adjacent pages may share its host page. */
+            if (!VirtualProtect(memory, 65536, protections[protection], &previous)
+                || !VirtualFree(part, ranges[range].size, MEM_DECOMMIT)
+                || VirtualAlloc(part, ranges[range].size, MEM_COMMIT, PAGE_READWRITE) != part)
+            {
+                message("FAIL: Could not decommit and recommit Windows pages.\n");
+                goto done;
+            }
+            for (offset = 0; offset < 65536; offset += 4096)
+            {
+                DWORD expected = offset >= ranges[range].offset && offset < ranges[range].offset + ranges[range].size
+                    ? PAGE_READWRITE : protections[protection];
+                if (!VirtualQuery(memory + offset, &info, sizeof(info))
+                    || info.State != MEM_COMMIT || info.Protect != expected)
+                {
+                    message("FAIL: Recommitting memory changed adjacent page protections.\n");
+                    goto done;
+                }
+            }
+            if (!VirtualProtect(memory, 65536, PAGE_READWRITE, &previous)) goto done;
+
+            /* A zeroing fix must preserve every live byte outside the decommitted range. */
+            for (offset = 0; offset < 65536; ++offset)
+            {
+                BYTE expected = offset >= ranges[range].offset && offset < ranges[range].offset + ranges[range].size
+                    ? 0 : 0x80 + offset / 4096;
+                if (memory[offset] != expected)
+                {
+                    wsprintfA(output, "FAIL: range %lu+%lu, protection %#lx, byte %lu: got %u, expected %u.\n",
+                              ranges[range].offset, ranges[range].size, protections[protection],
+                              offset, memory[offset], expected);
+                    message(output);
+                    goto done;
+                }
+            }
+            valid = TRUE;
+        done:
+            VirtualFree(memory, 0, MEM_RELEASE);
+            if (!valid) return FALSE;
+        }
+    message("PASS: Recommitted Windows pages are zeroed; adjacent data and protections are preserved.\n");
+    return TRUE;
 }
 
 struct install_prompt { BOOL product, domain; HWND button; };
@@ -139,6 +204,8 @@ void mainCRTStartup(void)
     ULONGLONG deadline, stable_since = 0;
     HWND stable_window = NULL;
     DWORD stable_pid = 0;
+    if (argv && argc == 2 && !lstrcmpW(argv[1], L"--memory"))
+        ExitProcess(check_page_recommit() ? 0 : 1);
     if (argv && argc == 2)
         for (WCHAR *cursor = argv[1]; *cursor && timeout <= 3600; ++cursor)
         {
@@ -147,7 +214,7 @@ void mainCRTStartup(void)
         }
     if (!timeout || timeout > 3600)
     {
-        message("Usage: mtgo-startup.exe TIMEOUT_SECONDS (1..3600)\n");
+        message("Usage: mtgo-startup.exe TIMEOUT_SECONDS (1..3600) or --memory\n");
         ExitProcess(2);
     }
     deadline = GetTickCount64() + (ULONGLONG)timeout * 1000;

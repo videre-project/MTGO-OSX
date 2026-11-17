@@ -1,0 +1,46 @@
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -2463,6 +2463,25 @@
+ }
+
+
++#if defined(__APPLE__) && defined(__aarch64__)
++/* A partial host page cannot be remapped without discarding adjacent live data.
++ * Clear the decommitted bytes so a later commit still returns zeroed memory. */
++static NTSTATUS decommit_partial_host_page( char *base, size_t size )
++{
++    char *page = ROUND_ADDR( base, host_page_mask );
++
++    if (mprotect( page, host_page_size, PROT_READ | PROT_WRITE )) return STATUS_ACCESS_DENIED;
++    memset( base, 0, size );
++    set_page_vprot_bits( base, size, 0, VPROT_COMMITTED );
++
++    /* Mark adjacent write-watched pages dirty while writes are enabled. */
++    set_page_vprot_bits( page, host_page_size, 0, VPROT_WRITEWATCH );
++    if (mprotect_range( page, host_page_size, 0, 0 )) return STATUS_ACCESS_DENIED;
++    return STATUS_SUCCESS;
++}
++#endif
++
++
+ /***********************************************************************
+  *           decommit_pages
+  *
+@@ -2480,6 +2499,17 @@
+     }
+     else host_end = ROUND_ADDR( base + size, host_page_mask );
+
++#if defined(__APPLE__) && defined(__aarch64__)
++    {
++        NTSTATUS status;
++        char *end = base + size;
++
++        if (base < host_start &&
++            (status = decommit_partial_host_page( base, min( end, host_start ) - base ))) return status;
++        if (host_end >= base && host_end < end &&
++            (status = decommit_partial_host_page( host_end, end - host_end ))) return status;
++    }
++#endif
+     if (host_start < host_end) anon_mmap_fixed( host_start, host_end - host_start, PROT_NONE, 0 );
+     set_page_vprot_bits( base, size, 0, VPROT_COMMITTED );
+     if (host_start < host_end) kernel_writewatch_register_range( view, host_start, host_end - host_start );
