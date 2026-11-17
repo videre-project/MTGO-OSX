@@ -132,7 +132,7 @@
  
 --- a/dlls/ntdll/unix/signal_arm64.c
 +++ b/dlls/ntdll/unix/signal_arm64.c
-@@ -1104,6 +1104,112 @@
+@@ -1104,6 +1104,126 @@
  }
  
  
@@ -167,6 +167,20 @@
 +    if (rec->ExceptionInformation[0] != EXCEPTION_WRITE_FAULT ||
 +        (fault & ~(get_host_page_size() - 1)) != (PC_sig(context) & ~(get_host_page_size() - 1))) return FALSE;
 +    instr = *(const ULONG *)PC_sig(context);
++    /* STR integer register, unsigned immediate offset, 8/16/32/64 bits. */
++    if ((instr & 0x3fc00000) == 0x39000000)
++    {
++        width = 1u << (instr >> 30);
++        rn = (instr >> 5) & 31;
++        rt = instr & 31;
++        address = get_load_register( context, rn, TRUE ) + ((instr >> 10) & 0xfff) * width;
++        value = get_load_register( context, rt, FALSE );
++        if (fault < address || fault >= address + width ||
++            !virtual_store_exec_memory( (void *)address, &value, width )) return FALSE;
++        PC_sig(context) += 4;
++        TRACE( "emulated same-page store %08x to %p\n", instr, (void *)address );
++        return TRUE;
++    }
 +    /* STP/STNP integer registers, 32 or 64 bits, all immediate modes. */
 +    if ((instr & 0x3e400000) != 0x28000000) return FALSE;
 +    opc = instr >> 30;
@@ -245,7 +259,7 @@
  /**********************************************************************
   *		segv_handler
   *
-@@ -1146,6 +1252,10 @@
+@@ -1146,6 +1266,10 @@
      rec.ExceptionInformation[1] = (ULONG_PTR)siginfo->si_addr;
      rec.NumberParameters = 2;
  

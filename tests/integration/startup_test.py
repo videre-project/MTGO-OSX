@@ -128,6 +128,8 @@ class MTGORuntimeTests(unittest.TestCase):
         ), observe_game=True) as client:
             runtime.require_stable_mtgo(client)
             self.assert_recommitted_pages_are_zeroed(client)
+            if runtime.architecture == "arm64":
+                self.assert_same_page_stores_are_supported(client)
             reports = client.progress()
 
             self.assert_progress_order(reports, (
@@ -155,6 +157,14 @@ class MTGORuntimeTests(unittest.TestCase):
         runtime = self.runtime
         log = client.logs / "memory-pages.log"
         result = runtime.run(runtime.wine, runtime.win32_observer, "--memory",
+                             environment=client.environment, timeout=30, check=False, log=log)
+        self.assertEqual(result.returncode, 0, log.read_text(errors="replace"))
+
+    def assert_same_page_stores_are_supported(self, client):
+        """ARM64 code must be able to update writable data in its host page."""
+        runtime = self.runtime
+        log = client.logs / "memory-stores.log"
+        result = runtime.run(runtime.wine, runtime.win32_observer, "--stores",
                              environment=client.environment, timeout=30, check=False, log=log)
         self.assertEqual(result.returncode, 0, log.read_text(errors="replace"))
 
