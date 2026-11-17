@@ -1,0 +1,102 @@
+--- a/dlls/aero.msstyles/aero.rc
++++ b/dlls/aero.msstyles/aero.rc
+@@ -54,7 +54,7 @@
+ /* Theme color names */
+ 1 COLORNAMES
+ {
+-"Blue\0"
++"NormalColor\0"
+ "\0"
+ }
+ 
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -1017,7 +1017,7 @@
+ [ThemeManager]
+ HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","ThemeActive",2,"1"
+ HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","DllName",2,"%10%\resources\themes\aero\aero.msstyles"
+-HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","ColorName",2,"Blue"
++HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","ColorName",2,"NormalColor"
+ HKCU,"Software\Microsoft\Windows\CurrentVersion\ThemeManager","SizeName",2,"NormalSize"
+ 
+ [WinmgmtService]
+--- a/dlls/uxtheme/msstyles.h
++++ b/dlls/uxtheme/msstyles.h
+@@ -90,6 +90,7 @@
+ 
+ typedef struct _UXINI_FILE *PUXINI_FILE;
+ 
++BOOL MSSTYLES_IsBundledAeroTheme(LPCWSTR path);
+ HRESULT MSSTYLES_OpenThemeFile(LPCWSTR lpThemeFile, LPCWSTR pszColorName, LPCWSTR pszSizeName, PTHEME_FILE *tf);
+ void MSSTYLES_CloseThemeFile(PTHEME_FILE tf);
+ HRESULT MSSTYLES_SetActiveTheme(PTHEME_FILE tf, BOOL setMetrics);
+--- a/dlls/uxtheme/msstyles.c
++++ b/dlls/uxtheme/msstyles.c
+@@ -54,6 +54,16 @@
+ static PTHEME_FILE tfActiveTheme;
+ 
+ /***********************************************************************/
++
++BOOL MSSTYLES_IsBundledAeroTheme(LPCWSTR path)
++{
++    static const WCHAR suffix[] = L"\\resources\\themes\\aero\\aero.msstyles";
++    WCHAR windows_dir[MAX_PATH];
++    UINT length = GetWindowsDirectoryW(windows_dir, ARRAY_SIZE(windows_dir));
++
++    return length && length < ARRAY_SIZE(windows_dir) &&
++           !wcsnicmp(path, windows_dir, length) && !lstrcmpiW(path + length, suffix);
++}
+ 
+ /**********************************************************************
+  *      MSSTYLES_OpenThemeFile
+@@ -72,6 +82,7 @@
+  */
+ HRESULT MSSTYLES_OpenThemeFile(LPCWSTR lpThemeFile, LPCWSTR pszColorName, LPCWSTR pszSizeName, PTHEME_FILE *tf)
+ {
++    static WCHAR normal_colors[] = L"NormalColor\0";
+     HMODULE hTheme;
+     HRSRC hrsc;
+     HRESULT hr = S_OK;
+@@ -119,6 +130,11 @@
+     }
+     pszColors = LoadResource(hTheme, hrsc);
+ 
++    /* Wineboot may defer replacement of the old Aero file while it is mapped. */
++    if (pszColors && SizeofResource(hTheme, hrsc) >= sizeof(L"Blue\0") &&
++        !memcmp(pszColors, L"Blue\0", sizeof(L"Blue\0")) && MSSTYLES_IsBundledAeroTheme(lpThemeFile))
++        pszColors = normal_colors;
++
+     if(!(hrsc = FindResourceW(hTheme, MAKEINTRESOURCEW(1), L"SIZENAMES"))) {
+         TRACE("Size names resource not found\n");
+         hr = HRESULT_FROM_WIN32(ERROR_BAD_FORMAT);
+--- a/dlls/uxtheme/system.c
++++ b/dlls/uxtheme/system.c
+@@ -168,9 +168,15 @@
+         TRACE("Failed to open theme registry key\n");
+ 
+     if(bThemeActive) {
++        const WCHAR *color = szCurrentColor[0] ? szCurrentColor : NULL;
++        BOOL migrate_color = color && !lstrcmpiW(color, L"Blue") && MSSTYLES_IsBundledAeroTheme(szCurrentTheme);
++
++        /* Migrate the old palette name when loading Wine's bundled Aero theme. */
++        if (migrate_color) color = L"NormalColor";
++
+         /* Make sure the theme requested is actually valid */
+         hr = MSSTYLES_OpenThemeFile(szCurrentTheme,
+-                                    szCurrentColor[0]?szCurrentColor:NULL,
++                                    color,
+                                     szCurrentSize[0]?szCurrentSize:NULL,
+                                     &pt);
+         if(FAILED(hr)) {
+@@ -180,8 +186,9 @@
+             szCurrentSize[0] = '\0';
+         }
+         else {
+-            /* Make sure the global color & size match the theme */
+-            lstrcpynW(szCurrentColor, pt->pszSelectedColor, ARRAY_SIZE(szCurrentColor));
++            /* Keep the old color until SetActiveTheme can persist the new one. */
++            if (!migrate_color)
++                lstrcpynW(szCurrentColor, pt->pszSelectedColor, ARRAY_SIZE(szCurrentColor));
+             lstrcpynW(szCurrentSize, pt->pszSelectedSize, ARRAY_SIZE(szCurrentSize));
+ 
+             UXTHEME_SetActiveTheme(pt);
