@@ -56,7 +56,7 @@ See [macOS Compatibility](runtime.md#macos-compatibility) for OS requirements an
 | Progress bar, counts and download estimates | [StartupProgress.swift](../src/Launcher/StartupProgress.swift), [StartupProgressBar.swift](../src/Launcher/UI/StartupProgressBar.swift), [LauncherSession.swift](../src/Launcher/LauncherSession.swift) |
 | Status wording and SDK progress records | [LauncherState.swift](../src/Launcher/LauncherState.swift), [LaunchProgress.swift](../src/Launcher/LaunchProgress.swift) |
 | Videre version check | [MTGOManifest.swift](../src/Launcher/MTGOManifest.swift) |
-| ClickOnce installation, updates and cached activation | [MTGOSDK](https://github.com/videre-project/MTGOSDK/tree/v1.9.0/MTGOSDK/lib/Launcher); [package extraction](../third_party/mtgosdk) |
+| ClickOnce installation, updates and cached activation | [MTGOSDK](https://github.com/videre-project/MTGOSDK/tree/v1.9.1/MTGOSDK/lib/Launcher); [package extraction](../third_party/mtgosdk) |
 | Runtime release selection and download | [RuntimePackage.swift](../src/Runtime/RuntimePackage.swift), [RuntimeInstaller.swift](../src/Runtime/RuntimeInstaller.swift) |
 | Wine prefix, rendering configuration and runtime validation | [Runtime/Wine](../src/Runtime/Wine) |
 | User-data folder and migration | [WineUserData.swift](../src/Runtime/Wine/WineUserData.swift) |

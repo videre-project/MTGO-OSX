@@ -42,8 +42,8 @@ use_repo(
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_archive(
     name = "mtgosdk",
-    urls = ["https://api.nuget.org/v3-flatcontainer/mtgosdk/1.9.0.20261109/mtgosdk.1.9.0.20261109.nupkg"],
-    sha256 = "e1722c745a74edd1af8b170d4314ef6c00a579e27948ae2a52535e0e5875b180",
+    urls = ["https://api.nuget.org/v3-flatcontainer/mtgosdk/1.9.1.20261117/mtgosdk.1.9.1.20261117.nupkg"],
+    sha256 = "2cd3429c2e08c4a33f183e05e366ec947a2236e6967a05dfe66f1c7c5f752018",
     type = "zip",
     build_file = "//third_party/mtgosdk:NuGet.BUILD.bazel",
 )

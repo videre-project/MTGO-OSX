@@ -19,7 +19,7 @@ Both files are packaged unchanged with license notices under `Contents/Resources
 
 ## Update the Package
 
-Update the NuGet URL and SHA-256 in [MODULE.bazel](../../MODULE.bazel). Current pin: [MTGOSDK 1.9.0.20261109](https://www.nuget.org/packages/MTGOSDK/1.9.0.20261109).
+Update the NuGet URL and SHA-256 in [MODULE.bazel](../../MODULE.bazel). Current pin: [MTGOSDK 1.9.1.20261117](https://www.nuget.org/packages/MTGOSDK/1.9.1.20261117).
 
 | Change | File |
 | --- | --- |
@@ -27,4 +27,4 @@ Update the NuGet URL and SHA-256 in [MODULE.bazel](../../MODULE.bazel). Current 
 | Extraction and output packaging | [launcher.bzl](launcher.bzl). |
 | Embedded assembly selection | [ExtractLauncher.cs](ExtractLauncher.cs). |
 
-Extraction reads assembly metadata directly, without loading Windows assemblies on macOS. ClickOnce activation, update checks and progress reporting use the [published MTGOSDK implementation](https://github.com/videre-project/MTGOSDK/tree/v1.9.0/MTGOSDK/lib/Launcher).
+Extraction reads assembly metadata directly, without loading Windows assemblies on macOS. ClickOnce activation, update checks and progress reporting use the [published MTGOSDK implementation](https://github.com/videre-project/MTGOSDK/tree/v1.9.1/MTGOSDK/lib/Launcher).
