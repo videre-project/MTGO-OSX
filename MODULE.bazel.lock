@@ -141,7 +141,7 @@
         "bzlTransitiveDigest": "W3Qu92ZFrMMmnGJLxATuzlZlgFD4WgX/GtqefgoXcDo=",
         "usagesDigest": "ZhxDteOsqWQAcUjZnt771f8a1Z0rJMFeviBDUXN+FGg=",
         "recordedFileInputs": {
-          "@@//third_party/sources.lock.json": "eb84713b1f40e16a76889bf55036c10510c36de4b15a2bd6f1c8d232248ecbf7"
+          "@@//third_party/sources.lock.json": "f36d1a0f2c64ac1e6c74f1a4d4e4bda04d20c0844f911e4335ce2edd4f57452b"
         },
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -311,8 +311,8 @@
           "mtgo_dmgbuild": {
             "repoRuleId": "@@//third_party:repositories.bzl%pinned_source",
             "attributes": {
-              "url": "https://files.pythonhosted.org/packages/48/4a/b16f1081f69592c6dba92baa4d3ca7a5685091a0f840f4b5e01be41aaf84/dmgbuild-1.6.5-py3-none-any.whl",
-              "sha256": "e19ab8c5e8238e6455d9ccb9175817be7fd62b9cdd1eef20f63dd88e0ec469ab",
+              "url": "https://files.pythonhosted.org/packages/6c/4a/8812638bba991a55a4b670806ab9cf60207077401893bb308eb1b04f288c/dmgbuild-1.6.7-py3-none-any.whl",
+              "sha256": "37ee5771c377beb3203d9164aae8046ffed8531c06edf9227f5788b3c599b1bf",
               "revision": "",
               "strip_prefix": ""
             }

@@ -82,9 +82,9 @@
     "version": "3.31.10"
   },
   "dmgbuild": {
-    "url": "https://files.pythonhosted.org/packages/48/4a/b16f1081f69592c6dba92baa4d3ca7a5685091a0f840f4b5e01be41aaf84/dmgbuild-1.6.5-py3-none-any.whl",
-    "sha256": "e19ab8c5e8238e6455d9ccb9175817be7fd62b9cdd1eef20f63dd88e0ec469ab",
-    "version": "1.6.5"
+    "url": "https://files.pythonhosted.org/packages/6c/4a/8812638bba991a55a4b670806ab9cf60207077401893bb308eb1b04f288c/dmgbuild-1.6.7-py3-none-any.whl",
+    "sha256": "37ee5771c377beb3203d9164aae8046ffed8531c06edf9227f5788b3c599b1bf",
+    "version": "1.6.7"
   },
   "ds_store": {
     "url": "https://files.pythonhosted.org/packages/47/bf/b1c10362a0d670ee8ae086d92c3ab795fca2a927e4ff25e7cd15224d3863/ds_store-1.3.1-py3-none-any.whl",
