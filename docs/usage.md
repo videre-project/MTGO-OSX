@@ -2,6 +2,10 @@
 
 Open **MTGO → Settings…** for appearance, behavior and runtime preferences.
 
+## Keyboard Shortcuts
+
+Use **Command+C** and **Command+V** to copy and paste in MTGO. Both Command keys work, and **Control** shortcuts remain available. Use **left Option** for **Alt** shortcuts.
+
 ## Customize Appearance
 
 | Setting | Effect |

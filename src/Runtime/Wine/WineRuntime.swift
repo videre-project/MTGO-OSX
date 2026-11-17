@@ -196,8 +196,11 @@ struct WineRuntime {
       .init(name: "DisableHWAcceleration", value: .dword(softwareRendering ? 1 : 0)),
     ])
 
-    // Splash suppression and main-window detection apply only to MTGO.
+    // Map Command to Control and left Option to Alt for MTGO shortcuts.
     registry.addKey("HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\MTGO.exe\\Mac Driver", values: [
+      .init(name: "LeftCommandIsCtrl", value: .string("Y")),
+      .init(name: "RightCommandIsCtrl", value: .string("Y")),
+      .init(name: "LeftOptionIsAlt", value: .string("Y")),
       .init(name: "SkipWindowTitle", value: .string("KickerWindow")),
       .init(name: "MainWindowTitle", value: .string("Magic: The Gathering Online")),
     ])
