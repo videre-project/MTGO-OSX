@@ -9,5 +9,6 @@
   "minimumMacOSVersion": "13.0",
   "direct3D9": "MTGO.app/Contents/Resources/lib/dxvk/d3d9.dll",
   "vulkanLibrary": "MTGO.app/Contents/Resources/lib/libMoltenVK.dylib",
+  "dxvkRequiresAppleGPU": true,
   "wineLoader": "MTGO.app/Contents/MacOS/wine"
 }

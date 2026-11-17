@@ -1,4 +1,5 @@
 import Foundation
+import Metal
 
 private struct RuntimeManifest: Decodable {
   let schemaVersion: Int
@@ -12,6 +13,7 @@ private struct RuntimeManifest: Decodable {
   let windowsRuntime: String
   let direct3D9: String?
   let vulkanLibrary: String?
+  let dxvkRequiresAppleGPU: Bool?
 }
 
 /// Validated native Wine binaries and the prefix used by one MTGO session.
@@ -73,9 +75,13 @@ struct WineRuntime {
       throw ApplicationError(message: "\(windowsRuntime.lastPathComponent) must be a \(architecture.rawValue) Windows binary.")
     }
 
+    // MoltenVK exposes the robustness features required by this DXVK build on Apple GPUs.
+    let canUseDXVK = manifest.dxvkRequiresAppleGPU != true
+      || MTLCopyAllDevices().contains { $0.supportsFamily(.apple1) }
+
     return WineRuntime(
       architecture: architecture, prefix: prefix, wine: wine, wineLoader: wineLoader, wineserver: server,
-      archiver: archiver, direct3D9: direct3D9
+      archiver: archiver, direct3D9: canUseDXVK ? direct3D9 : nil
     )
   }
 
@@ -225,7 +231,8 @@ struct WineRuntime {
 
     let binaries = wine.deletingLastPathComponent()
     env["DYLD_FALLBACK_LIBRARY_PATH"] = binaries.deletingLastPathComponent().appendingPathComponent("lib").path + ":/usr/lib"
-    env["WINEDLLOVERRIDES"] = direct3D9 == nil ? "winemenubuilder.exe=" : "winemenubuilder.exe=;d3d9=n"
+    // The prefix may still contain DXVK from an earlier launch.
+    env["WINEDLLOVERRIDES"] = direct3D9 == nil ? "winemenubuilder.exe=;d3d9=b" : "winemenubuilder.exe=;d3d9=n"
     env["PATH"] = binaries.path + ":" + (env["PATH"] ?? "/usr/bin:/bin")
 
     // The macOS driver supplies windows directly; no XQuartz or VNC display.
