@@ -1,0 +1,35 @@
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -2489,18 +2489,22 @@
+      */
+     - (BOOL) canBecomeKeyWindow
+     {
++        WineWindow* owner;
++
++        if ([self canBecomeMainWindow]) return YES;
++        if (self.disabled || self.noForeground || self.closing ||
++            self.preventsAppActivation || ![self isVisible]) return NO;
++
++        // An owned dialog can take focus while its owner is disabled.
++        owner = (WineWindow*)[self parentWindow];
++        return [owner isKindOfClass:[WineWindow class]] && owner.disabled;
++    }
++
++    - (BOOL) canBecomeMainWindow
++    {
+         if (causing_becomeKeyWindow == self) return YES;
+         if (self.disabled || self.noForeground) return NO;
+-        if ([self isKeyWindow]) return YES;
+-
+-        // If a window's collectionBehavior says it participates in cycling,
+-        // it must return YES from this method to actually be eligible.
+-        return ![self isExcludedFromWindowsMenu];
+-    }
+-
+-    - (BOOL) canBecomeMainWindow
+-    {
+-        return [self canBecomeKeyWindow];
++        return [self isKeyWindow] || ![self isExcludedFromWindowsMenu];
+     }
+ 
+     - (NSRect) constrainFrameRect:(NSRect)frameRect toScreen:(NSScreen *)screen
