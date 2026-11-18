@@ -230,7 +230,7 @@ jobs:
         env:
           SDK_FINGERPRINT: ${{ needs.toolchain.outputs.fingerprint }}
           BAZEL_VERSION_HASH: ${{ hashFiles('.bazelversion') }}
-          MACOS_INPUTS: ${{ hashFiles('BUILD.bazel', 'LICENSE', 'NOTICE', '.bazelrc', 'bazelw', 'MODULE.bazel', 'MODULE.bazel.lock', 'src/**', 'tools/**', 'third_party/**', 'tests/**', '.bazelversion') }}
+          MACOS_INPUTS: ${{ hashFiles('BUILD.bazel', 'LICENSE', 'NOTICE', '.bazelrc', 'bazelw', 'MODULE.bazel', 'MODULE.bazel.lock', 'src/**', 'tools/**', 'third_party/**', 'tests/**', '.bazelversion', 'global.json') }}
         run: |
           printf 'BAZEL_OUTPUT_BASE=%s/mtgo-bazel-output\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           printf 'BAZEL_CACHE=%s/mtgo-bazel-cache\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"

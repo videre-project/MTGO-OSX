@@ -8,6 +8,7 @@ def _sdk_launcher_impl(ctx):
     args.add_all([
         ctx.file._project,
         ctx.file._extractor,
+        ctx.file._global_json,
         ctx.file.assembly,
         ctx.file.notice,
         ctx.file.license,
@@ -20,17 +21,20 @@ set -eu
 dotnet="$1"
 project="$2"
 extractor="$3"
-assembly="$PWD/$4"
-notice="$5"
-license="$6"
-output="$PWD/$7"
+config="$4"
+assembly="$PWD/$5"
+notice="$6"
+license="$7"
+output="$PWD/$8"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-cp "$project" "$extractor" "$work/"
-DOTNET_CLI_HOME="$work/dotnet-home" "$dotnet" run \
-    --project "$work/ExtractLauncher.csproj" --configuration Release --no-launch-profile \
-    -- "$assembly" "$output"
+cp "$project" "$extractor" "$config" "$work/"
+(
+    cd "$work"
+    DOTNET_CLI_HOME="$work/dotnet-home" "$dotnet" run \
+        --configuration Release --no-launch-profile -- "$assembly" "$output"
+)
 cp "$notice" "$output/MTGOSDK-NOTICE"
 cp "$license" "$output/MTGOSDK-LICENSE"
 """,
@@ -40,6 +44,7 @@ cp "$license" "$output/MTGOSDK-LICENSE"
             ctx.file.license,
             ctx.file._project,
             ctx.file._extractor,
+            ctx.file._global_json,
             ctx.file._fingerprint,
         ],
         outputs = [bundle],
@@ -58,6 +63,7 @@ sdk_launcher = rule(
         "license": attr.label(allow_single_file = True, mandatory = True),
         "_project": attr.label(default = "ExtractLauncher.csproj", allow_single_file = True),
         "_extractor": attr.label(default = "ExtractLauncher.cs", allow_single_file = True),
+        "_global_json": attr.label(default = "//:global.json", allow_single_file = True),
         "_fingerprint": attr.label(default = "@dotnet_sdk//:fingerprint.txt", allow_single_file = True),
     },
 )

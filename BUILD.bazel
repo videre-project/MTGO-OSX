@@ -1,6 +1,6 @@
 load("//tools:macos.bzl", "macos_dmg")
 
-exports_files(["LICENSE", "NOTICE"])
+exports_files(["LICENSE", "NOTICE", "global.json"])
 
 alias(name = "MTGO", actual = "//src:MTGO")
 alias(name = "runtime_arm64", actual = "//src:runtime_arm64")
