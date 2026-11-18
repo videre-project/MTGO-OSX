@@ -2,17 +2,22 @@
 
 ## Publish a Release
 
-1. Push your changes to `main` and wait for [build CI](../.github/workflows/build.yml) to pass.
-2. From that same commit, create and push a `v<major>.<minor>.<patch>` tag:
+1. On `main`, tag the release commit and push both refs together.
 
    ```sh
-   git tag v0.1.1
-   git push origin v0.1.1
+   git tag v0.2.1
+   git push --atomic origin main v0.2.1
    ```
 
-3. Review and publish the generated draft on GitHub.
+2. Review and publish the generated draft on GitHub.
+
+Release waits for a successful [Build](../.github/workflows/build.yml) on `main` for the tagged commit.
 
 Draft notes include a [download table](../.github/release-notes.md) and GitHub's generated changelog. Rerunning Release refreshes draft assets and preserves edited notes.
+
+## MTGO Maintenance
+
+Set the repository Actions variable `SKIP_MTGO_STARTUP_TESTS` to `true` before queuing Build to skip the live installation and startup scenario on ARM64 and Intel. Build still runs launcher, runtime validation, Dock and release packaging tests. Clear the variable when service returns.
 
 ## Versioning
 
@@ -44,8 +49,8 @@ Set app versions through tags, without editing `src/Info.plist`. Changing an app
 | Condition | Action |
 | --- | --- |
 | Build still running | Wait; Release follows its result. |
-| No main-branch build | Push the commit to `main`, then rerun Release. |
-| Build failed, or artifacts are missing or expired | Rerun the main-push Build run for that commit, then rerun Release. |
+| No main-branch build | Push the tagged commit to `main` or run Build manually on `main` at that commit. Rerun Release. |
+| Build failed, or artifacts are missing or expired | Rerun Build for that commit, then rerun Release. |
 | Checksum mismatch | Regenerate inputs through Build, then rerun Release. |
 | Release already published | Use a new version tag; Release does not overwrite published assets. |
 

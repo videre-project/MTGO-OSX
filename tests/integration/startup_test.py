@@ -12,6 +12,7 @@ reports a crash.
 
 from decimal import Decimal
 import json
+import os
 import re
 import tarfile
 import unittest
@@ -53,6 +54,8 @@ class MTGORuntimeTests(unittest.TestCase):
             self.assertFalse((rejected_prefix / "system.reg").exists(),
                              "Rejected runtimes must not initialize Wine")
 
+    @unittest.skipIf(os.environ.get("SKIP_MTGO_STARTUP_TESTS", "").lower() == "true",
+                     "Live MTGO startup tests disabled")
     def test_fresh_install_cached_relaunch_and_offline_startup(self):
         """One installation must support first launch, current-version relaunch and offline activation."""
         self.runtime.verify_bundle()

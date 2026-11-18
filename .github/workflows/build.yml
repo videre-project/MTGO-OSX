@@ -250,6 +250,7 @@ jobs:
             ${{ steps.cache-key.outputs.key }}-
             ${{ steps.cache-key.outputs.prefix }}
       - name: Restore .NET Framework downloads
+        if: vars.SKIP_MTGO_STARTUP_TESTS != 'true'
         id: framework-cache
         uses: actions/cache/restore@v5
         with:
@@ -269,10 +270,15 @@ jobs:
           ./bazelw --output_base="$BAZEL_OUTPUT_BASE" build //:MTGO //:dmg_inputs //:runtime_arm64 //:runtime_x86_64 \
             --jobs=2 --disk_cache="$BAZEL_CACHE/actions" \
             --repository_cache="$BAZEL_CACHE/repositories" --sandbox_debug
-      - name: Run MTGO integration tests
+      - name: Run integration tests
         id: integration-tests
+        env:
+          SKIP_MTGO_STARTUP_TESTS: ${{ vars.SKIP_MTGO_STARTUP_TESTS == 'true' }}
         shell: bash
         run: |
+          if [[ "$SKIP_MTGO_STARTUP_TESTS" == true ]]; then
+            echo 'Live MTGO startup tests skipped (SKIP_MTGO_STARTUP_TESTS=true).' >> "$GITHUB_STEP_SUMMARY"
+          fi
           ./bazelw --output_base="$BAZEL_OUTPUT_BASE" test \
             //tests:launcher_startup //tests:settings //tests:preparation \
             //tests:mtgo_startup //tests:dock_attention \
@@ -280,7 +286,7 @@ jobs:
             --jobs=2 --disk_cache="$BAZEL_CACHE/actions" \
             --repository_cache="$BAZEL_CACHE/repositories" \
             --sandbox_debug --nocache_test_results --test_output=errors \
-            --test_env=MTGO_TEST_PACKAGE_CACHE
+            --test_env=MTGO_TEST_PACKAGE_CACHE --test_env=SKIP_MTGO_STARTUP_TESTS
       - name: Archive release inputs
         run: python3 tools/release.py stage --output dist
       - name: Upload app and runtime archives
