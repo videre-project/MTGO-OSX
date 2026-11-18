@@ -113,13 +113,11 @@ final class DockController {
   }
 
   /// Restores Wine's key window after the launcher activates its native menus.
-  @discardableResult
-  func finishActivation() -> Bool {
-    guard returningFocusToGame else { return false }
+  func finishActivation() {
+    guard returningFocusToGame else { return }
 
     returningFocusToGame = false
     activate()
-    return true
   }
 
   private func takeMenuOwnership(pid: pid_t) {

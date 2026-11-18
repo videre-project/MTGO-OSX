@@ -50,8 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
       self?.dock.attentionMode = mode
     }.store(in: &subscriptions)
 
-    // Wait until a closing launcher window has left the app's visible windows.
+    // Return focus after Settings closes. AppKit posts this notification for menus too.
     NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)
+      .filter { $0.object is SettingsWindow }
       .receive(on: RunLoop.main).sink { [weak self] _ in self?.activateGameIfReady() }
       .store(in: &subscriptions)
 
@@ -356,7 +357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
   func applicationDidBecomeActive(_ notification: Notification) {
     dock.clearAttention()
-    if !dock.finishActivation() { activateGameIfReady() }
+    dock.finishActivation()
   }
 
   func applicationDidHide(_ notification: Notification) {

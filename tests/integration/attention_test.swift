@@ -298,7 +298,7 @@ final class DockAttentionTests: NSObject, NSApplicationDelegate {
 
   func applicationDidBecomeActive(_ notification: Notification) {
     dock?.clearAttention()
-    _ = dock?.finishActivation()
+    dock?.finishActivation()
   }
 
   private func activateGame() async throws {
