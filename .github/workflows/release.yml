@@ -32,7 +32,7 @@ jobs:
         id: build
         shell: bash
         run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Release tags must use v<major>.<minor>.<patch>.' >&2; exit 1; }
+          python3 tools/release.py --repository "$GH_REPO" notes --tag "$RELEASE_TAG" > /dev/null
           commit=$(git rev-parse HEAD)
           # GitHub can queue a tag push before the matching main build appears.
           printf 'Waiting for a main build for %s.\n' "$commit"
@@ -111,9 +111,9 @@ jobs:
             test "$draft" = true || { echo 'Published releases cannot be replaced.' >&2; exit 1; }
             gh release edit "$RELEASE_TAG" --title "MTGO-OSX $RELEASE_TAG"
           else
-            sed -e "s|@VERSION@|${RELEASE_TAG#v}|g" -e "s|@REPOSITORY@|$GH_REPO|g" \
-              .github/release-notes.md > "$RUNNER_TEMP/release-notes.md"
-            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes \
+            python3 tools/release.py --repository "$GH_REPO" notes --tag "$RELEASE_TAG" \
+              > "$RUNNER_TEMP/release-notes.md"
+            gh release create "$RELEASE_TAG" --draft --verify-tag \
               --notes-file "$RUNNER_TEMP/release-notes.md" --title "MTGO-OSX $RELEASE_TAG"
           fi
           gh release upload "$RELEASE_TAG" "dist/MTGO-OSX-${RELEASE_TAG#v}.dmg" \

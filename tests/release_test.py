@@ -1,4 +1,4 @@
-"""Release packaging changes metadata while retaining app code and runtime archives."""
+"""Release notes and artifact packaging."""
 
 import hashlib
 import json
@@ -10,7 +10,60 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from release import stage, stamp, verify, verify_build, write_checksums
+from release import release_notes, stage, stamp, verify, verify_build, write_checksums
+
+
+class ReleaseNotesTests(unittest.TestCase):
+    repository = "example/client"
+
+    def test_notes_select_the_tag_and_compare_with_the_previous_changelog_entry(self):
+        changelog = """# Changelog
+
+## [2.8.10] - 2025-04-12
+
+- Improve how drafts are saved.
+
+## [2.8.1] - 2025-03-04
+
+### Fixed
+
+- Keep selected filters when reopening the sidebar.
+
+## [2.7.4] - 2025-02-12
+
+- Add a search shortcut.
+"""
+        template = "## Download\n\n[Client @VERSION@](https://github.com/@REPOSITORY@/releases/tag/v@VERSION@)\n"
+        notes = release_notes(changelog, template, "v2.8.1", self.repository)
+        self.assertEqual(notes, """## Download
+
+[Client 2.8.1](https://github.com/example/client/releases/tag/v2.8.1)
+
+## Changes
+
+### Fixed
+
+- Keep selected filters when reopening the sidebar.
+
+**Full Changelog:** [`v2.7.4...v2.8.1`](https://github.com/example/client/compare/v2.7.4...v2.8.1)
+""")
+
+    def test_first_release_links_to_its_commit_history(self):
+        notes = release_notes("## [1.0.0]\n\nFirst release.\n", "## Download", "v1.0.0", self.repository)
+        self.assertEqual(notes.splitlines()[-1],
+                         "**Full Changelog:** [`v1.0.0`](https://github.com/example/client/commits/v1.0.0)")
+
+    def test_notes_require_one_nonempty_entry_for_the_tag(self):
+        heading = "## [2.8.1] - 2025-03-04\n"
+        changelogs = {
+            "missing": "## [2.8.10]\n\nImprove how drafts are saved.\n",
+            "empty": heading,
+            "duplicate": (heading + "\nKeep selected filters.\n\n") * 2,
+        }
+        for case, changelog in changelogs.items():
+            with self.subTest(case=case):
+                with self.assertRaisesRegex(ValueError, "Expected one non-empty entry for v2.8.1"):
+                    release_notes(changelog, "## Download", "v2.8.1", self.repository)
 
 
 class ReleasePackagingTests(unittest.TestCase):

@@ -30,6 +30,31 @@ def release_version(tag):
     return tag[1:]
 
 
+def release_notes(changelog, template, tag, repository):
+    """Render a tagged release with installation instructions and a comparison link."""
+    version = release_version(tag)
+    sections = re.findall(
+        r"^## \[([0-9]+\.[0-9]+\.[0-9]+)\](?: - [0-9]{4}-[0-9]{2}-[0-9]{2})?[ \t]*\n(.*?)(?=^## |\Z)",
+        changelog, re.MULTILINE | re.DOTALL,
+    )
+    matches = [index for index, (number, _) in enumerate(sections) if number == version]
+    if len(matches) != 1 or not sections[matches[0]][1].strip():
+        raise ValueError(f"Expected one non-empty entry for {tag} in docs/CHANGELOG.md")
+
+    index = matches[0]
+    changes = sections[index][1].strip()
+    github = f"https://github.com/{repository}"
+    if index + 1 < len(sections):
+        previous = sections[index + 1][0]
+        comparison = f"v{previous}...{tag}"
+        link = f"[`{comparison}`]({github}/compare/{comparison})"
+    else:
+        link = f"[`{tag}`]({github}/commits/{tag})"
+
+    instructions = template.replace("@VERSION@", version).replace("@REPOSITORY@", repository)
+    return f"{instructions.rstrip()}\n\n## Changes\n\n{changes}\n\n**Full Changelog:** {link}\n"
+
+
 def runtime_assets(catalog, repository, app_version):
     """Require both runtime architectures and URLs targeting one app version."""
     if catalog.get("schemaVersion") != 1:
@@ -223,6 +248,8 @@ def main():
     check = commands.add_parser("verify", help="Verify final release assets before publication")
     check.add_argument("--directory", type=Path, required=True)
     check.add_argument("--tag", required=True)
+    notes = commands.add_parser("notes", help="Render release notes for a changelog version")
+    notes.add_argument("--tag", required=True)
     args = parser.parse_args()
 
     try:
@@ -230,8 +257,16 @@ def main():
             stage(args.app, args.artwork, args.runtimes, args.output, args.repository)
         elif args.command == "package":
             package(args.directory, args.tag, args.build_number, args.output, args.repository, args.identity)
-        else:
+        elif args.command == "verify":
             verify(args.directory, args.tag, args.repository)
+        else:
+            root = Path(__file__).resolve().parents[1]
+            sys.stdout.write(release_notes(
+                (root / "docs/CHANGELOG.md").read_text(encoding="utf-8"),
+                (root / ".github/release-notes.md").read_text(encoding="utf-8"),
+                args.tag,
+                args.repository,
+            ))
     except (ValueError, KeyError, OSError, tarfile.TarError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"Release preparation failed: {error}\n")
 

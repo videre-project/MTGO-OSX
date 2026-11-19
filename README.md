@@ -35,6 +35,7 @@ MTGO_RUNTIME_ROOT="$runtime_dir" ./bazelw run //:MTGO
 - [Settings and data](docs/usage.md) — preferences, user data and logs.
 - [Development](docs/development.md) — builds, source map, tests and CI caches.
 - [Runtime architecture](docs/runtime.md) — Wine, .NET Framework, graphics and macOS integration.
+- [Changelog](docs/CHANGELOG.md) — changes in each release.
 - [Releases](docs/releases.md) — versioning, signing, packaging and publication.
 
 ## License

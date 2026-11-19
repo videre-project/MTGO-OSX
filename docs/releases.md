@@ -2,18 +2,19 @@
 
 ## Publish a Release
 
-1. On `main`, tag the release commit and push both refs together.
+1. Add a version section at the top of [CHANGELOG.md](CHANGELOG.md) using `## [version] - YYYY-MM-DD`.
+2. On `main`, tag the release commit and push both refs together.
 
    ```sh
    git tag v0.2.1
    git push --atomic origin main v0.2.1
    ```
 
-2. Review and publish the generated draft on GitHub.
+3. Review and publish the generated draft on GitHub.
 
 Release waits for a successful [Build](../.github/workflows/build.yml) on `main` for the tagged commit.
 
-Draft notes include a [download table](../.github/release-notes.md) and GitHub's generated changelog. Rerunning Release refreshes draft assets and preserves edited notes.
+Draft notes use a [download and installation template](../.github/release-notes.md) and the changelog entry for the tag. Rerunning Release refreshes draft assets and preserves edited notes.
 
 ## MTGO Maintenance
 
