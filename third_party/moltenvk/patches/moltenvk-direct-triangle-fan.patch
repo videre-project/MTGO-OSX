@@ -1,0 +1,55 @@
+--- a/MoltenVK/MoltenVK/Commands/MVKCmdDraw.h
++++ b/MoltenVK/MoltenVK/Commands/MVKCmdDraw.h
+@@ -213,7 +213,8 @@
+ 
+ 	void encode(MVKCommandEncoder* cmdEncoder) override;
+ 	bool hoistDrawConversions(MVKCommandEncoder* cmdEncoder) override;
+-	void encode(MVKCommandEncoder* cmdEncoder, const MVKIndexMTLBufferBinding& ibbOrig);
++	void encode(MVKCommandEncoder* cmdEncoder, const MVKIndexMTLBufferBinding& ibbOrig,
++				uint32_t triangleFanVertexCount = 0);
+ 
+ protected:
+ 	MVKCommandTypePool<MVKCommand>* getTypePool(MVKCommandPool* cmdPool) override;
+--- a/MoltenVK/MoltenVK/Commands/MVKCmdDraw.mm
++++ b/MoltenVK/MoltenVK/Commands/MVKCmdDraw.mm
+@@ -416,6 +416,7 @@
+ 
+ // Populates and encodes a MVKCmdDrawIndexedIndirect command, after populating indexed indirect buffers.
+ void MVKCmdDraw::encodeIndexedIndirect(MVKCommandEncoder* cmdEncoder) {
++	if (_vertexCount < 3) { return; }
+ 
+ 	// Create an indexed indirect buffer and populate it from the draw arguments.
+ 	uint32_t indirectIdxBuffStride = sizeof(MTLDrawIndexedPrimitivesIndirectArguments);
+@@ -450,7 +451,7 @@
+ 					  indirectIdxBuff->_offset,
+ 					  1,
+ 					  indirectIdxBuffStride);
+-	diiCmd.encode(cmdEncoder, ibb);
++	diiCmd.encode(cmdEncoder, ibb, _vertexCount);
+ }
+ 
+ // With layered multiview, tessellation, geometry and mesh pipelines draw once for each view of the Metal pass,
+@@ -1727,7 +1728,8 @@
+ 	encode(cmdEncoder, cmdEncoder->getVkGraphics()._indexBuffer);
+ }
+ 
+-void MVKCmdDrawIndexedIndirect::encode(MVKCommandEncoder* cmdEncoder, const MVKIndexMTLBufferBinding& ibbOrig) {
++void MVKCmdDrawIndexedIndirect::encode(MVKCommandEncoder* cmdEncoder, const MVKIndexMTLBufferBinding& ibbOrig,
++									   uint32_t triangleFanVertexCount) {
+ 	if (mvkSkipsUnsupportedDraw(cmdEncoder)) { return; }
+ 
+ 	id<MTLBuffer> indirectBuffer = _mtlIndirectBuffer;
+@@ -1866,7 +1868,12 @@
+         mtlIndBuff = tempIndirectBuff->_mtlBuffer;
+         mtlTempIndBuffOfst = tempIndirectBuff->_offset;
+ 		if (vtxAdjmts.isTriangleFan) {
+-			auto* triVtxBuff = cmdEncoder->getTempMTLBuffer(mvkMTLIndexTypeSizeInBytes((MTLIndexType)ibb.mtlIndexType) * kMVKMaxDrawIndirectVertexCount, true);
++			// A direct draw supplies its vertex count before the conversion to indirect arguments.
++			NSUInteger triangleIndexCount = triangleFanVertexCount
++				? 3 * NSUInteger(triangleFanVertexCount - 2)
++				: kMVKMaxDrawIndirectVertexCount;
++			auto* triVtxBuff = cmdEncoder->getTempMTLBuffer(
++				mvkMTLIndexTypeSizeInBytes((MTLIndexType)ibb.mtlIndexType) * triangleIndexCount, true);
+ 			ibb.mtlBuffer = triVtxBuff->_mtlBuffer;
+ 			ibb.offset = triVtxBuff->_offset;
+ 		}

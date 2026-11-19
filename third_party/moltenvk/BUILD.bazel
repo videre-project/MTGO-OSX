@@ -14,7 +14,10 @@ native_library(
         "_patches/patches/moltenvk/metalsharp-vkmt.diff=.",
         "_patches/patches/spirv-cross/metalsharp.diff=External/SPIRV-Cross",
     ],
-    patches = ["patches/moltenvk-sdk14.patch"],
+    patches = [
+        "patches/moltenvk-sdk14.patch",
+        "patches/moltenvk-direct-triangle-fan.patch",
+    ],
     tools = {"//third_party/build_tools:build_tools": "build_tools"},
     cmake_project = "CMakeLists.txt",
     target = "MoltenVK",
