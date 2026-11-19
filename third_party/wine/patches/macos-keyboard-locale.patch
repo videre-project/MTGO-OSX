@@ -1,0 +1,28 @@
+--- a/dlls/win32u/input.c
++++ b/dlls/win32u/input.c
+@@ -1070,6 +1070,8 @@
+      */
+
+     NtQueryDefaultLocale( TRUE, &layout );
++    /* A custom locale ID cannot identify a keyboard language. */
++    if (layout == LOCALE_CUSTOM_UNSPECIFIED) NtQueryDefaultLocale( FALSE, &layout );
+     layout = MAKELONG( layout, layout );
+     return ULongToHandle( layout );
+ }
+@@ -1416,7 +1418,6 @@
+ {
+     struct user_thread_info *info = get_user_thread_info();
+     HKL old_layout;
+-    LCID locale;
+     HWND focus;
+
+     TRACE_(keyboard)( "layout %p, flags %x\n", layout, flags );
+@@ -1431,7 +1432,7 @@
+     }
+
+     if (LOWORD(layout) != MAKELANGID(LANG_INVARIANT, SUBLANG_DEFAULT) &&
+-        (NtQueryDefaultLocale( TRUE, &locale ) || LOWORD(layout) != locale))
++        LOWORD(layout) != LOWORD(get_locale_kbd_layout()))
+     {
+         RtlSetLastWin32Error( ERROR_CALL_NOT_IMPLEMENTED );
+         FIXME_(keyboard)( "Changing user locale is not supported\n" );

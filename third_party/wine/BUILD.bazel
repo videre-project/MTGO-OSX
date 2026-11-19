@@ -20,6 +20,7 @@ common_patches = [
     "patches/macos-startup-transition.patch",
     "patches/macos-dock-attention.patch",
     "patches/macos-modal-focus.patch",
+    "patches/macos-keyboard-locale.patch",
     "patches/preserve-minimized-surface.patch",
     "patches/macos-main-thread-dispatch.patch",
     "patches/macos-opengl-rectangles.patch",

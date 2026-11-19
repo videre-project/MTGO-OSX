@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.4] - 2026-11-19
+
+### Fixed
+
+- Fix a crash when clicking or tabbing into a login field on Macs set to English (Switzerland) or another locale without a fixed Windows locale ID. Wine supplies a valid keyboard language ID while preserving regional date and number formats. ([#4](https://github.com/videre-project/MTGO-OSX/issues/4))
+
 ## [0.3.3] - 2026-11-19
 
 ### Fixed
