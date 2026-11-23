@@ -12,7 +12,7 @@
 
 | Group | Architectures | Coverage |
 | --- | --- | --- |
-| `common_patches` | ARM64 and x86_64 | Window identity, Dock commands and attention, startup transitions, minimized surfaces, message queues and graphics integration. |
+| `common_patches` | ARM64 and x86_64 | Window identity, Dock commands and attention, startup transitions, minimized surfaces, message queues, graphics integration and WMI error reporting. |
 | `arm64_patches` | ARM64 | AnyCPU and ARM64X loading, unwinding, PE alignment, Darwin memory layout and register compatibility. |
 
 AnyCPU, ARM64X and unwind fixes come from [`mtgo-docker/patches/`](https://github.com/videre-project/mtgo-docker/tree/main/patches), pinned by revision and SHA256 in `sources.lock.json`. macOS integration patches remain under `patches/`.

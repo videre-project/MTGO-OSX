@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.5] - 2026-11-23
+
+### Fixed
+
+- Fix a Wine WMI error that prevented MTGO from displaying its error dialog after a fatal exception. ([#6](https://github.com/videre-project/MTGO-OSX/issues/6))
+
 ## [0.3.4] - 2026-11-19
 
 ### Fixed

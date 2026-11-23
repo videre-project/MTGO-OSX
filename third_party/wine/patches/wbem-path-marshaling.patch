@@ -1,0 +1,135 @@
+From fd74267d3a31609c5bfbbbd6ea720a5fb6445ecd Mon Sep 17 00:00:00 2001
+From: Piotr Caban <piotr@codeweavers.com>
+Date: Tue, 22 Sep 2026 12:46:32 +0200
+Subject: [PATCH] wmiutils: Implement IMarshal interface in WbemDefPath.
+
+---
+ dlls/wmiutils/path.c            | 13 +++++++++++++
+ dlls/wmiutils/tests/Makefile.in |  2 +-
+ dlls/wmiutils/tests/path.c      | 31 +++++++++++++++++++++++++++++++
+ 3 files changed, 45 insertions(+), 1 deletion(-)
+
+diff --git a/dlls/wmiutils/path.c b/dlls/wmiutils/path.c
+index f6d8bff0fda7..819edf47babd 100644
+--- a/dlls/wmiutils/path.c
++++ b/dlls/wmiutils/path.c
+@@ -50,6 +50,7 @@ struct path
+ {
+     IWbemPath        IWbemPath_iface;
+     LONG             refs;
++    IUnknown        *marshal;
+     CRITICAL_SECTION cs;
+     WCHAR           *text;
+     int              len_text;
+@@ -342,6 +343,7 @@ static ULONG WINAPI path_Release(
+         clear_path( path );
+         path->cs.DebugInfo->Spare[0] = 0;
+         DeleteCriticalSection( &path->cs );
++        IUnknown_Release( path->marshal );
+         free( path );
+     }
+     return refs;
+@@ -361,6 +363,10 @@ static HRESULT WINAPI path_QueryInterface(
+     {
+         *ppvObject = iface;
+     }
++    else if (IsEqualIID( riid, &IID_IMarshal ))
++    {
++        return IUnknown_QueryInterface( path->marshal, riid, ppvObject );
++    }
+     else
+     {
+         FIXME("interface %s not implemented\n", debugstr_guid(riid));
+@@ -1293,6 +1299,7 @@ static const struct IWbemPathVtbl path_vtbl =
+ HRESULT WbemPath_create( LPVOID *ppObj )
+ {
+     struct path *path;
++    HRESULT hr;
+ 
+     TRACE("%p\n", ppObj);
+ 
+@@ -1300,6 +1307,12 @@ HRESULT WbemPath_create( LPVOID *ppObj )
+ 
+     path->IWbemPath_iface.lpVtbl = &path_vtbl;
+     path->refs = 1;
++    hr = CoCreateFreeThreadedMarshaler((IUnknown *)&path->IWbemPath_iface, &path->marshal);
++    if (FAILED(hr))
++    {
++        free( path );
++        return hr;
++    }
+     InitializeCriticalSectionEx( &path->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO );
+     path->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": wmiutils_path.cs");
+     init_path( path );
+diff --git a/dlls/wmiutils/tests/Makefile.in b/dlls/wmiutils/tests/Makefile.in
+index 7e28d7be3ea5..685a695ade0e 100644
+--- a/dlls/wmiutils/tests/Makefile.in
++++ b/dlls/wmiutils/tests/Makefile.in
+@@ -1,5 +1,5 @@
+ TESTDLL   = wmiutils.dll
+-IMPORTS   = ole32
++IMPORTS   = ole32 uuid
+ 
+ SOURCES = \
+ 	path.c
+diff --git a/dlls/wmiutils/tests/path.c b/dlls/wmiutils/tests/path.c
+index c7f47937a320..2c641dbf2274 100644
+--- a/dlls/wmiutils/tests/path.c
++++ b/dlls/wmiutils/tests/path.c
+@@ -20,11 +20,14 @@
+ 
+ #include <stdarg.h>
+ #include "windows.h"
++#include "objbase.h"
+ #include "initguid.h"
+ #include "wmiutils.h"
+ #include "wbemcli.h"
+ #include "wine/test.h"
+ 
++static const GUID CLSID_ft_unmarshaler = {0x00000359, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
++
+ static const WCHAR path1[] = L"";
+ static const WCHAR path2[] = L"\\";
+ static const WCHAR path3[] = L"\\\\server";
+@@ -824,6 +827,33 @@ static void test_IWbemPath_SetNamespaceAt(void)
+     IWbemPath_Release( path );
+ }
+ 
++static void test_IWbemPath_marshal(void)
++{
++    IMultiQI *multiqi;
++    IMarshal *marshal;
++    IWbemPath *path;
++    CLSID clsid;
++    HRESULT hr;
++
++    if (!(path = create_path())) return;
++
++    hr = IWbemPath_QueryInterface( path, &IID_IMarshal, (void **)&marshal );
++    ok( hr == S_OK, "got %#lx\n", hr );
++    hr = IMarshal_GetUnmarshalClass( marshal, &IID_IWbemPath, NULL, MSHCTX_INPROC, NULL, 0, &clsid );
++    ok( hr == S_OK, "got %#lx\n", hr );
++    ok( IsEqualIID(&clsid, &CLSID_InProcFreeMarshaler), "clsid = %s\n", wine_dbgstr_guid(&clsid) );
++    hr = IMarshal_GetUnmarshalClass( marshal, &IID_IWbemPath, NULL, MSHCTX_LOCAL, NULL, 0, &clsid );
++    ok( hr == S_OK, "got %#lx\n", hr );
++    ok( IsEqualIID(&clsid, &CLSID_StdMarshal) || IsEqualIID(&clsid, &CLSID_ft_unmarshaler),
++            "clsid = %s\n", wine_dbgstr_guid(&clsid) );
++    IMarshal_Release( marshal );
++
++    hr = IWbemPath_QueryInterface( path, &IID_IMultiQI, (void **)&multiqi );
++    ok( hr == E_NOINTERFACE, "got %#lx\n", hr );
++
++    IWbemPath_Release( path );
++}
++
+ START_TEST (path)
+ {
+     CoInitialize( NULL );
+@@ -839,6 +869,7 @@ START_TEST (path)
+     test_IWbemPath_RemoveAllNamespaces();
+     test_IWbemPath_RemoveNamespaceAt();
+     test_IWbemPath_SetNamespaceAt();
++    test_IWbemPath_marshal();
+ 
+     CoUninitialize();
+ }

@@ -12,6 +12,7 @@ arm64_patches = [
 ]
 
 common_patches = [
+    "patches/wbem-path-marshaling.patch",
     "patches/preserve-message-queue.patch",
     "patches/skip-startup-window.patch",
     "patches/aero-normal-color.patch",
