@@ -202,6 +202,11 @@ struct WineRuntime {
       .init(name: "DisableHWAcceleration", value: .dword(softwareRendering ? 1 : 0)),
     ])
 
+    // WPF can draw hyphens as missing glyphs when MTGO requests an absent Calibri.
+    registry.addKey("HKEY_CURRENT_USER\\Software\\Wine\\Fonts\\Replacements", values: [
+      .init(name: "Calibri", value: .string("Arial")),
+    ])
+
     // Map Command to Control and left Option to Alt for MTGO shortcuts.
     registry.addKey("HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\MTGO.exe\\Mac Driver", values: [
       .init(name: "LeftCommandIsCtrl", value: .string("Y")),
