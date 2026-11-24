@@ -81,7 +81,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Prepare draft release
+    name: Publish GitHub release
     needs: package
     runs-on: ubuntu-latest
     permissions:
@@ -118,3 +118,5 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" "dist/MTGO-OSX-${RELEASE_TAG#v}.dmg" \
             dist/runtime-*.tar.xz dist/RuntimePackages.json --clobber
+      - name: Publish release
+        run: gh release edit "$RELEASE_TAG" --draft=false

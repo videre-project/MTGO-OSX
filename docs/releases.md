@@ -10,11 +10,9 @@
    git push --atomic origin main v0.2.1
    ```
 
-3. Review and publish the generated draft on GitHub.
+Release waits for a successful [Build](../.github/workflows/build.yml) on `main` for the tagged commit, then publishes on GitHub once all assets have uploaded.
 
-Release waits for a successful [Build](../.github/workflows/build.yml) on `main` for the tagged commit.
-
-Draft notes use a [download and installation template](../.github/release-notes.md) and the changelog entry for the tag. Rerunning Release refreshes draft assets and preserves edited notes.
+Release notes use a [download and installation template](../.github/release-notes.md) and the changelog entry for the tag. If an upload fails, rerun Release to finish publishing the draft.
 
 ## MTGO Maintenance
 
@@ -39,7 +37,7 @@ Set app versions through tags, without editing `src/Info.plist`. Changing an app
 | --- | --- | --- |
 | Select build | Linux | Find a main-branch build for the tagged commit and wait for it to pass. |
 | Sign and package | macOS | Verify inputs, stamp app metadata and runtime URLs, sign the app and create a DMG. |
-| Prepare draft release | Linux | Verify final checksums, generate attestations and upload draft assets. |
+| Publish GitHub release | Linux | Verify checksums, attest and upload assets, then publish. |
 
 - **Downloads:** `MTGO-OSX-<version>.dmg`, ARM64 and Intel runtime archives, and `RuntimePackages.json`.
 - **Verification:** GitHub digests and attestations for final assets; `SHA256SUMS` for CI transfers.
