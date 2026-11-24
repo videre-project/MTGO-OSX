@@ -141,7 +141,7 @@
         "bzlTransitiveDigest": "W3Qu92ZFrMMmnGJLxATuzlZlgFD4WgX/GtqefgoXcDo=",
         "usagesDigest": "ZhxDteOsqWQAcUjZnt771f8a1Z0rJMFeviBDUXN+FGg=",
         "recordedFileInputs": {
-          "@@//third_party/sources.lock.json": "f36d1a0f2c64ac1e6c74f1a4d4e4bda04d20c0844f911e4335ce2edd4f57452b"
+          "@@//third_party/sources.lock.json": "1588daeda7dee9ee0ed64bf4097110e92a4cc15e58ad4d3d3acd22dfdf0f02ea"
         },
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -257,8 +257,8 @@
           "mtgo_metal_patches": {
             "repoRuleId": "@@//third_party:repositories.bzl%pinned_source",
             "attributes": {
-              "url": "https://codeload.github.com/metalsharp/VKD3D-Proton-MacOS/tar.gz/54537b668dad054b0bcebe7525435c84a205f014",
-              "sha256": "c6230e7706487a8de54c9bd0ea6a7f90ed2425e5152c0dabb2a6b47bbe42ff29",
+              "url": "https://codeload.github.com/metalsharp/MetalVulkan/tar.gz/54537b668dad054b0bcebe7525435c84a205f014",
+              "sha256": "bbb7512288875c29ce85c2d0cf564dce3ef63e61f809c349690ef2909198b68c",
               "revision": "54537b668dad054b0bcebe7525435c84a205f014",
               "strip_prefix": ""
             }

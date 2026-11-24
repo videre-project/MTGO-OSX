@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.7] - 2026-11-24
+
+### Fixed
+
+- Allow MTGO to display the portion of a card art crop that falls within the bitmap when the requested crop extends past an edge.
+
 ## [0.3.6] - 2026-11-24
 
 ### Fixed

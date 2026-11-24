@@ -52,9 +52,9 @@
     "sha256": "430ebdd3df90aa398b78576b85a76a18d59da21c6b2d367be62d41f88c98da38"
   },
   "metal_patches": {
-    "url": "https://codeload.github.com/metalsharp/VKD3D-Proton-MacOS/tar.gz/54537b668dad054b0bcebe7525435c84a205f014",
+    "url": "https://codeload.github.com/metalsharp/MetalVulkan/tar.gz/54537b668dad054b0bcebe7525435c84a205f014",
     "revision": "54537b668dad054b0bcebe7525435c84a205f014",
-    "sha256": "c6230e7706487a8de54c9bd0ea6a7f90ed2425e5152c0dabb2a6b47bbe42ff29"
+    "sha256": "bbb7512288875c29ce85c2d0cf564dce3ef63e61f809c349690ef2909198b68c"
   },
   "spirv_cross": {
     "url": "https://codeload.github.com/dttdrv/SPIRV-Cross/tar.gz/c1af57390a0dd4950af578ec2135120ac218806f",

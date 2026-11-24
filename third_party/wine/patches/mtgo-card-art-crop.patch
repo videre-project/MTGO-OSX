@@ -1,0 +1,41 @@
+--- a/dlls/windowscodecs/clipper.c
++++ b/dlls/windowscodecs/clipper.c
+@@ -196,6 +196,8 @@
+     IWICBitmapSource *source, const WICRect *rc)
+ {
+     BitmapClipper *This = impl_from_IWICBitmapClipper(iface);
++    LONGLONG right, bottom;
++    WICRect clipped;
+     UINT width, height;
+     HRESULT hr = S_OK;
+ 
+@@ -212,7 +214,28 @@
+     hr = IWICBitmapSource_GetSize(source, &width, &height);
+     if (FAILED(hr)) goto end;
+ 
+-    if  ((rc->X + rc->Width > width) || (rc->Y + rc->Height > height))
++    right = (LONGLONG)rc->X + rc->Width;
++    bottom = (LONGLONG)rc->Y + rc->Height;
++    if ((rc->X < 0 || rc->Y < 0 || right > width || bottom > height) &&
++        GetModuleHandleW(L"MTGO.exe") == GetModuleHandleW(NULL))
++    {
++        /* MTGO treats a failed card-art crop as fatal. Keep the pixels inside the bitmap. */
++        clipped.X = max(rc->X, 0);
++        clipped.Y = max(rc->Y, 0);
++        right = min(right, width);
++        bottom = min(bottom, height);
++        if (right <= clipped.X || bottom <= clipped.Y)
++        {
++            hr = E_INVALIDARG;
++            goto end;
++        }
++
++        clipped.Width = right - clipped.X;
++        clipped.Height = bottom - clipped.Y;
++        TRACE("Clipping MTGO crop to %s.\n", debug_wic_rect(&clipped));
++        rc = &clipped;
++    }
++    else if ((UINT)rc->X + rc->Width > width || (UINT)rc->Y + rc->Height > height)
+     {
+         hr = E_INVALIDARG;
+         goto end;
