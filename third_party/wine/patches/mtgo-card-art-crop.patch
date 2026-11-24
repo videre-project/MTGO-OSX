@@ -9,7 +9,7 @@
      UINT width, height;
      HRESULT hr = S_OK;
  
-@@ -212,7 +214,28 @@
+@@ -212,7 +214,37 @@
      hr = IWICBitmapSource_GetSize(source, &width, &height);
      if (FAILED(hr)) goto end;
  
@@ -19,19 +19,28 @@
 +    if ((rc->X < 0 || rc->Y < 0 || right > width || bottom > height) &&
 +        GetModuleHandleW(L"MTGO.exe") == GetModuleHandleW(NULL))
 +    {
-+        /* MTGO treats a failed card-art crop as fatal. Keep the pixels inside the bitmap. */
-+        clipped.X = max(rc->X, 0);
-+        clipped.Y = max(rc->Y, 0);
-+        right = min(right, width);
-+        bottom = min(bottom, height);
-+        if (right <= clipped.X || bottom <= clipped.Y)
++        if (width == 1 && height == 1 && !rc->Width && !rc->Height &&
++            (rc->X == INT_MIN || rc->X == 0) && (rc->Y == INT_MIN || rc->Y == 0))
 +        {
-+            hr = E_INVALIDARG;
-+            goto end;
++            /* MTGO converts an undefined art offset to INT_MIN when the preview has no size. */
++            clipped = (WICRect){0, 0, 1, 1};
 +        }
++        else
++        {
++            /* MTGO treats a failed card-art crop as fatal. Keep the pixels inside the bitmap. */
++            clipped.X = max(rc->X, 0);
++            clipped.Y = max(rc->Y, 0);
++            right = min(right, width);
++            bottom = min(bottom, height);
++            if (right <= clipped.X || bottom <= clipped.Y)
++            {
++                hr = E_INVALIDARG;
++                goto end;
++            }
 +
-+        clipped.Width = right - clipped.X;
-+        clipped.Height = bottom - clipped.Y;
++            clipped.Width = right - clipped.X;
++            clipped.Height = bottom - clipped.Y;
++        }
 +        TRACE("Clipping MTGO crop to %s.\n", debug_wic_rect(&clipped));
 +        rc = &clipped;
 +    }

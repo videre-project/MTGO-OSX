@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.8] - 2026-11-24
+
+### Fixed
+
+- Fix a crash when opening Settings if MTGO tries to crop placeholder art before the card preview has a size. ([#6](https://github.com/videre-project/MTGO-OSX/issues/6))
+
 ## [0.3.7] - 2026-11-24
 
 ### Fixed
