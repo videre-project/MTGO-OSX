@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.6] - 2026-11-24
+
+### Fixed
+
+- Fix missing hyphens in MTGO when Calibri is unavailable.
+
+### Changed
+
+- Publish GitHub releases automatically once all release assets have been uploaded.
+
 ## [0.3.5] - 2026-11-23
 
 ### Fixed
