@@ -6,6 +6,10 @@ Open **MTGO → Settings…** for appearance, behavior and runtime preferences.
 
 Use **Command+C** and **Command+V** to copy and paste in MTGO. Both Command keys work, and **Control** shortcuts remain available. Use **left Option** for **Alt** shortcuts.
 
+## Import and Export Decks
+
+Choose **Import** in MTGO to browse your Mac for decks. You can select multiple files in the Open panel. When exporting a deck, choose a folder and select **DEK**, **TXT**, or **CSV** from the format menu before saving.
+
 ## Customize Appearance
 
 | Setting | Effect |

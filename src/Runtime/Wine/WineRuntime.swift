@@ -207,8 +207,9 @@ struct WineRuntime {
       .init(name: "Calibri", value: .string("Arial")),
     ])
 
-    // Map Command to Control and left Option to Alt for MTGO shortcuts.
+    // Use native file panels and Mac keyboard shortcuts in the game.
     registry.addKey("HKEY_CURRENT_USER\\Software\\Wine\\AppDefaults\\MTGO.exe\\Mac Driver", values: [
+      .init(name: "NativeFilePanels", value: .string("Y")),
       .init(name: "LeftCommandIsCtrl", value: .string("Y")),
       .init(name: "RightCommandIsCtrl", value: .string("Y")),
       .init(name: "LeftOptionIsAlt", value: .string("Y")),

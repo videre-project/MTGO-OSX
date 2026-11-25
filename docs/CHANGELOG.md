@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.9] - 2026-11-25
+
+### Changed
+
+- Use native macOS file dialogs to import and export decks. Select multiple decks when importing, or choose DEK, TXT, or CSV when exporting. ([#3](https://github.com/videre-project/MTGO-OSX/issues/3))
+
 ## [0.3.8] - 2026-11-24
 
 ### Fixed
